@@ -39,7 +39,7 @@ class RackUpDB extends Dexie {
 
     this.cloud.configure({
       databaseUrl: 'https://zlibmtpue.dexie.cloud',
-      requireAuth: false,
+      requireAuth: true,
     });
   }
 }
