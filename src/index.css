@@ -1,0 +1,296 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Baize & Slate ── */
+  --color-chalk: #f0ece0;
+  --color-chalk-dim: #908a78;
+  --color-board: #142018;
+  --color-board-light: #1e3228;
+  --color-board-dark: #0f1c14;
+  /* ── Scoreboard accents ── */
+  --color-win: #5ce892;
+  --color-loss: #e8554e;
+  --color-gold: #d9a830;
+  --color-silver: #8a9197;
+  --color-bronze: #b5722a;
+  /* ── Wood / Trim ── */
+  --color-trim: #4a3420;
+  --color-trim-light: #6b4c30;
+  /* ── Large screen breakpoint ── */
+  --breakpoint-3xl: 1920px;
+}
+
+/* ── Base ── */
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Alegreya Sans', 'Segoe UI', system-ui, sans-serif;
+  background-color: var(--color-board-dark);
+  color: var(--color-chalk);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+/* ── Baize texture overlay ── */
+
+#root {
+  position: relative;
+}
+
+/* Chalk dust smudge spots */
+#root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(ellipse at 20% 15%, rgba(240,236,224,0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 75% 25%, rgba(240,236,224,0.025) 0%, transparent 40%),
+    radial-gradient(ellipse at 50% 70%, rgba(240,236,224,0.02) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 80%, rgba(240,236,224,0.03) 0%, transparent 45%),
+    radial-gradient(ellipse at 10% 60%, rgba(240,236,224,0.015) 0%, transparent 50%);
+}
+
+/* Coarser noise grain */
+#root::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.6'/%3E%3C/svg%3E");
+  background-size: 150px 150px;
+  mix-blend-mode: overlay;
+}
+
+#root > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Display font (chalky handwriting) ── */
+.font-display {
+  font-family: 'Caveat', 'Georgia', cursive;
+}
+
+/* ── Score numbers (bold scoreboard) ── */
+.score-num {
+  font-family: 'Bebas Neue', 'Impact', sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* ── Panel styles (chalk-drawn boxes) ── */
+.panel {
+  background: rgba(20,32,24,0.9);
+  border: 2px dashed rgba(240,236,224,0.15);
+  border-radius: 6px;
+  box-shadow:
+    0 0 12px rgba(0,0,0,0.3) inset;
+}
+
+.panel-wood {
+  background: linear-gradient(
+    180deg,
+    rgba(74,52,32,0.95) 0%,
+    rgba(55,38,22,0.98) 50%,
+    rgba(74,52,32,0.95) 100%
+  );
+  border: 1px solid rgba(140,100,60,0.3);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 0 rgba(140,100,60,0.2) inset,
+    0 -1px 0 rgba(0,0,0,0.3) inset,
+    0 4px 12px rgba(0,0,0,0.4);
+  background-size: 100% 100%, 200px 200px;
+}
+
+/* ── Button press feedback ── */
+.btn-press {
+  transition: transform 80ms ease, box-shadow 80ms ease, filter 80ms ease;
+}
+.btn-press:active {
+  transform: scale(0.97);
+  filter: brightness(0.9);
+}
+
+/* ── Chalk text effect (multi-layer dust halo) ── */
+.chalk-text {
+  text-shadow:
+    0 0 3px rgba(240,236,224,0.15),
+    0 0 8px rgba(240,236,224,0.08),
+    0 0 16px rgba(240,236,224,0.04),
+    1px 1px 2px rgba(0,0,0,0.3);
+}
+
+/* ── Gold glow for champion (warm chalk-yellow) ── */
+.glow-gold {
+  text-shadow:
+    0 0 6px rgba(217,168,48,0.4),
+    0 0 16px rgba(217,168,48,0.2),
+    0 0 30px rgba(217,168,48,0.1);
+}
+
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(144,138,120,0.3);
+  border-radius: 3px;
+}
+
+/* ── Select styling ── */
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23908a78'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 36px;
+}
+
+select option {
+  background: #142018;
+  color: #f0ece0;
+}
+
+/* ── Input focus ring ── */
+input:focus {
+  outline: none;
+  border-color: var(--color-gold) !important;
+  box-shadow: 0 0 0 2px rgba(217,168,48,0.2);
+}
+
+/* ── Virtual Keyboard (chalkboard theme) ── */
+
+.chalk-keyboard-theme.hg-theme-default {
+  background: rgba(15, 28, 20, 0.95);
+  border: 2px dashed rgba(240, 236, 224, 0.15);
+  border-radius: 6px;
+  padding: 8px;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.3) inset;
+}
+
+.chalk-keyboard-theme .hg-row {
+  gap: 4px;
+  justify-content: center;
+}
+
+.chalk-keyboard-theme .hg-button {
+  background: rgba(30, 50, 40, 0.9);
+  border: 1.5px dashed rgba(240, 236, 224, 0.15);
+  border-radius: 6px;
+  color: #f0ece0;
+  font-family: 'Alegreya Sans', 'Segoe UI', system-ui, sans-serif;
+  font-size: 1.125rem;
+  font-weight: 600;
+  height: 52px;
+  box-shadow: none;
+}
+
+.chalk-keyboard-theme .hg-button:active,
+.chalk-keyboard-theme .hg-button-pressed {
+  background: rgba(217, 168, 48, 0.3);
+  border-color: rgba(217, 168, 48, 0.5);
+  transform: scale(0.97);
+}
+
+.chalk-keyboard-theme .hg-button.hg-functionBtn[data-skbtn="{bksp}"] {
+  max-width: 100px;
+  color: #e8554e;
+}
+
+.chalk-keyboard-theme .hg-button.hg-functionBtn[data-skbtn="{shift}"] {
+  max-width: 72px;
+}
+
+.chalk-keyboard-theme .hg-button[data-active="true"] {
+  background: rgba(217, 168, 48, 0.25);
+  border-color: rgba(217, 168, 48, 0.5);
+  color: #d9a830;
+}
+
+.chalk-keyboard-theme .hg-button.hg-functionBtn[data-skbtn="{space}"] {
+  max-width: 50%;
+}
+
+/* ── Large screen scaling (24-32" wall display) ── */
+
+@media (min-width: 1280px) {
+  .chalk-keyboard-theme.hg-theme-default {
+    padding: 12px;
+  }
+  .chalk-keyboard-theme .hg-row {
+    gap: 6px;
+  }
+  .chalk-keyboard-theme .hg-button {
+    height: 72px;
+    font-size: 1.5rem;
+    border-radius: 8px;
+  }
+  .panel {
+    border-width: 2.5px;
+  }
+  .chalk-text {
+    text-shadow:
+      0 0 5px rgba(240,236,224,0.18),
+      0 0 12px rgba(240,236,224,0.1),
+      0 0 24px rgba(240,236,224,0.05),
+      2px 2px 3px rgba(0,0,0,0.3);
+  }
+  .glow-gold {
+    text-shadow:
+      0 0 10px rgba(217,168,48,0.5),
+      0 0 24px rgba(217,168,48,0.25),
+      0 0 48px rgba(217,168,48,0.12);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+  select {
+    background-size: 24px;
+    padding-right: 48px;
+  }
+}
+
+@media (min-width: 1920px) {
+  .chalk-keyboard-theme.hg-theme-default {
+    padding: 16px;
+  }
+  .chalk-keyboard-theme .hg-row {
+    gap: 8px;
+  }
+  .chalk-keyboard-theme .hg-button {
+    height: 88px;
+    font-size: 1.75rem;
+    border-radius: 10px;
+  }
+  .panel {
+    border-width: 3px;
+  }
+  .chalk-text {
+    text-shadow:
+      0 0 6px rgba(240,236,224,0.2),
+      0 0 16px rgba(240,236,224,0.12),
+      0 0 32px rgba(240,236,224,0.06),
+      3px 3px 4px rgba(0,0,0,0.3);
+  }
+  .glow-gold {
+    text-shadow:
+      0 0 14px rgba(217,168,48,0.5),
+      0 0 32px rgba(217,168,48,0.3),
+      0 0 64px rgba(217,168,48,0.15);
+  }
+}
