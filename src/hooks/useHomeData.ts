@@ -1,12 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Player, Session, Frame } from '../db/dexie';
-import {
-  getActiveSession,
-  getAllPlayers,
-  getActivePlayers,
-  getSessionFrames,
-  getFramesByDateRange,
-} from '../db/services';
+import type { Player, Session, Frame } from '../db/supabase';
+import { supabase } from '../db/supabase';
+import { mapPlayer, mapSession, mapFrame, type PlayerRow, type SessionRow, type FrameRow } from '../db/mappers';
 
 interface MonthlyEntry {
   name: string;
@@ -39,22 +34,46 @@ export function useHomeData(): HomeData {
     let cancelled = false;
 
     async function load() {
-      const session = await getActiveSession();
-      const allP = await getAllPlayers();
-      const activeP = await getActivePlayers();
+      // Fetch active session
+      const { data: sessData } = await supabase
+        .from('sessions')
+        .select('*')
+        .is('ended_at', null)
+        .limit(1)
+        .maybeSingle();
 
+      const session = sessData ? mapSession(sessData as SessionRow) : undefined;
+
+      // Fetch all players
+      const { data: allPlayerData } = await supabase.from('players').select('*');
+      const allP = (allPlayerData as PlayerRow[] | null)?.map(mapPlayer) ?? [];
+      const activeP = allP.filter((p) => !p.archived);
+
+      // Fetch session frames
       let frames: Frame[] = [];
       if (session?.id !== undefined) {
-        frames = await getSessionFrames(session.id);
+        const { data: frameData } = await supabase
+          .from('frames')
+          .select('*')
+          .eq('session_id', session.id)
+          .order('recorded_at', { ascending: true });
+        frames = (frameData as FrameRow[] | null)?.map(mapFrame) ?? [];
       }
 
       // Monthly leaderboard
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      const monthFrames = await getFramesByDateRange(startOfMonth, endOfMonth);
 
-      const map = new Map<string, MonthlyEntry>();
+      const { data: monthFrameData } = await supabase
+        .from('frames')
+        .select('*')
+        .gte('recorded_at', startOfMonth.toISOString())
+        .lte('recorded_at', endOfMonth.toISOString());
+
+      const monthFrames = (monthFrameData as FrameRow[] | null)?.map(mapFrame) ?? [];
+
+      const map = new Map<number, MonthlyEntry>();
       for (const p of allP) {
         if (p.id !== undefined) map.set(p.id, { name: p.name, won: 0, lost: 0 });
       }

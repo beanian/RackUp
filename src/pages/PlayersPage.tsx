@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Player } from '../db/dexie';
+import type { Player } from '../db/supabase';
 import {
   getAllPlayers,
   addPlayer,
@@ -15,11 +15,11 @@ export default function PlayersPage() {
   const [archivedPlayers, setArchivedPlayers] = useState<Player[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
-  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
+  const [confirmArchiveId, setConfirmArchiveId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -41,7 +41,7 @@ export default function PlayersPage() {
     refresh();
   }
 
-  async function handleRename(id: string) {
+  async function handleRename(id: number) {
     const trimmed = renameValue.trim();
     if (!trimmed) return;
     await renamePlayer(id, trimmed);
@@ -50,18 +50,18 @@ export default function PlayersPage() {
     refresh();
   }
 
-  async function handleArchive(id: string) {
+  async function handleArchive(id: number) {
     await archivePlayer(id);
     setConfirmArchiveId(null);
     refresh();
   }
 
-  async function handleRestore(id: string) {
+  async function handleRestore(id: number) {
     await restorePlayer(id);
     refresh();
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(id: number) {
     try {
       await deletePlayer(id);
       setConfirmDeleteId(null);

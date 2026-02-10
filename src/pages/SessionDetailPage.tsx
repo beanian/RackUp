@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getSession, getSessionFrames, getAllPlayers } from '../db/services';
-import type { Session, Player, Frame } from '../db/dexie';
+import type { Session, Player, Frame } from '../db/supabase';
 
 interface Standing {
-  playerId: string;
+  playerId: number;
   name: string;
   won: number;
   lost: number;
@@ -21,7 +21,7 @@ export default function SessionDetailPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [session, setSession] = useState<Session | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
-  const [playerMap, setPlayerMap] = useState<Map<string, Player>>(new Map());
+  const [playerMap, setPlayerMap] = useState<Map<number, Player>>(new Map());
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -29,14 +29,15 @@ export default function SessionDetailPage() {
     let cancelled = false;
 
     async function load() {
-      if (!sessionId) {
+      const id = Number(sessionId);
+      if (isNaN(id)) {
         setNotFound(true);
         setLoading(false);
         return;
       }
 
       const [sess, allPlayers] = await Promise.all([
-        getSession(sessionId),
+        getSession(id),
         getAllPlayers(),
       ]);
 
@@ -48,7 +49,7 @@ export default function SessionDetailPage() {
         return;
       }
 
-      const sessionFrames = await getSessionFrames(sessionId);
+      const sessionFrames = await getSessionFrames(id);
       const pMap = new Map(allPlayers.map((p) => [p.id!, p]));
 
       if (!cancelled) {
@@ -87,10 +88,10 @@ export default function SessionDetailPage() {
     );
   }
 
-  const getName = (id: string) => playerMap.get(id)?.name ?? 'Unknown';
+  const getName = (id: number) => playerMap.get(id)?.name ?? 'Unknown';
 
   // Build standings
-  const standingsMap = new Map<string, Standing>();
+  const standingsMap = new Map<number, Standing>();
   for (const pid of session.playerIds) {
     standingsMap.set(pid, {
       playerId: pid,
@@ -110,18 +111,18 @@ export default function SessionDetailPage() {
   );
 
   // Build head-to-head matchups
-  const h2hKey = (a: string, b: string) =>
+  const h2hKey = (a: number, b: number) =>
     a < b ? `${a}-${b}` : `${b}-${a}`;
   const h2hMap = new Map<
     string,
-    { p1: string; p2: string; p1Wins: number; p2Wins: number }
+    { p1: number; p2: number; p1Wins: number; p2Wins: number }
   >();
 
   for (const f of frames) {
     const key = h2hKey(f.winnerId, f.loserId);
     if (!h2hMap.has(key)) {
-      const p1 = f.winnerId < f.loserId ? f.winnerId : f.loserId;
-      const p2 = f.winnerId < f.loserId ? f.loserId : f.winnerId;
+      const p1 = Math.min(f.winnerId, f.loserId);
+      const p2 = Math.max(f.winnerId, f.loserId);
       h2hMap.set(key, { p1, p2, p1Wins: 0, p2Wins: 0 });
     }
     const entry = h2hMap.get(key)!;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import type { Player, Frame, Session } from '../db/dexie';
+import type { Player, Frame, Session } from '../db/supabase';
 import {
   getAllPlayers,
   getAllFrames,
@@ -37,7 +37,7 @@ export default function StatsPage() {
   const [allSessions, setAllSessions] = useState<Session[]>([]);
 
   // Player stats state
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [playerStats, setPlayerStats] = useState<PlayerStats | null>(null);
 
   // Leaderboard state
@@ -102,7 +102,7 @@ export default function StatsPage() {
 
   // Player name map
   const playerMap = useMemo(() => {
-    const map: Record<string, string> = {};
+    const map: Record<number, string> = {};
     for (const p of players) {
       if (p.id !== undefined) map[p.id] = p.name;
     }
@@ -188,11 +188,11 @@ function PlayerStatsView({
   currentForm,
 }: {
   players: Player[];
-  selectedPlayerId: string | null;
-  onSelectPlayer: (id: string) => void;
+  selectedPlayerId: number | null;
+  onSelectPlayer: (id: number) => void;
   stats: PlayerStats | null;
-  playerMap: Record<string, string>;
-  currentForm: { sessionId: string; date: string; wins: number; losses: number }[];
+  playerMap: Record<number, string>;
+  currentForm: { sessionId: number; date: string; wins: number; losses: number }[];
 }) {
   if (players.length === 0) {
     return (
@@ -207,7 +207,7 @@ function PlayerStatsView({
       {/* Player selector */}
       <select
         value={selectedPlayerId ?? ''}
-        onChange={(e) => onSelectPlayer(e.target.value)}
+        onChange={(e) => onSelectPlayer(Number(e.target.value))}
         className="w-full min-h-16 xl:min-h-24 px-4 xl:px-6 rounded-xl bg-board border border-board-light text-chalk font-bold text-xl xl:text-3xl appearance-none cursor-pointer"
       >
         {players.map((p) => (
@@ -291,7 +291,7 @@ function PlayerStatsView({
                         className="flex items-center justify-between bg-board-dark/50 rounded-lg px-4 py-3 xl:px-6 xl:py-5 border border-board-light/20"
                       >
                         <span className="text-chalk font-semibold truncate mr-3 text-lg xl:text-2xl">
-                          {playerMap[opponentId] ?? `Player ${opponentId}`}
+                          {playerMap[Number(opponentId)] ?? `Player ${opponentId}`}
                         </span>
                         <div className="flex items-center gap-3 xl:gap-5 shrink-0">
                           <span className="text-win font-bold score-num xl:text-2xl">{record.won}W</span>

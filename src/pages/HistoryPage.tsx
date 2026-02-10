@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getAllSessions, getSessionFrames, getAllPlayers } from '../db/services';
-import type { Session, Player, Frame } from '../db/dexie';
+import type { Session, Player, Frame } from '../db/supabase';
 
 interface SessionSummary {
   session: Session;
@@ -30,7 +30,7 @@ export default function HistoryPage() {
           .filter((s) => s.endedAt !== null)
           .map(async (session) => {
             const frames: Frame[] = await getSessionFrames(session.id!);
-            const wins: Record<string, number> = {};
+            const wins: Record<number, number> = {};
             for (const f of frames) {
               wins[f.winnerId] = (wins[f.winnerId] || 0) + 1;
             }
@@ -40,7 +40,7 @@ export default function HistoryPage() {
             for (const [pid, count] of Object.entries(wins)) {
               if (count > maxWins) {
                 maxWins = count;
-                winnerName = playerMap.get(pid)?.name ?? 'Unknown';
+                winnerName = playerMap.get(Number(pid))?.name ?? 'Unknown';
               }
             }
 

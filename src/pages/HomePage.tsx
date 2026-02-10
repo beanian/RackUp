@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import type { Player, Session, Frame } from '../db/dexie';
+import type { Player, Session, Frame } from '../db/supabase';
 import {
   startSession,
   endSession,
@@ -14,13 +14,13 @@ type MatchStep = 'pickPlayer1' | 'pickPlayer2' | 'gameOn';
 
 export default function HomePage() {
   const [view, setView] = useState<View>('idle');
-  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<number[]>([]);
 
   // Match state — winner stays on with challenger queue
   const [matchStep, setMatchStep] = useState<MatchStep>('pickPlayer1');
-  const [player1Id, setPlayer1Id] = useState<string | null>(null);
-  const [player2Id, setPlayer2Id] = useState<string | null>(null);
-  const [challengerQueue, setChallengerQueue] = useState<string[]>([]);
+  const [player1Id, setPlayer1Id] = useState<number | null>(null);
+  const [player2Id, setPlayer2Id] = useState<number | null>(null);
+  const [challengerQueue, setChallengerQueue] = useState<number[]>([]);
 
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [confirmUndo, setConfirmUndo] = useState(false);
@@ -55,7 +55,7 @@ export default function HomePage() {
 
   // ── Player name lookup ──
   const playerName = useCallback(
-    (id: string) => allPlayers.find(p => p.id === id)?.name ?? '?',
+    (id: number) => allPlayers.find(p => p.id === id)?.name ?? '?',
     [allPlayers],
   );
 
@@ -63,7 +63,7 @@ export default function HomePage() {
   const runningTotals = useMemo(() => {
     if (!activeSession) return [];
 
-    const counts = new Map<string, number>();
+    const counts = new Map<number, number>();
     for (const pid of activeSession.playerIds) {
       counts.set(pid, 0);
     }
@@ -101,18 +101,18 @@ export default function HomePage() {
     refresh();
   };
 
-  const togglePlayer = (id: string) => {
+  const togglePlayer = (id: number) => {
     setSelectedPlayerIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
     );
   };
 
-  const handleSelectPlayer1 = (id: string) => {
+  const handleSelectPlayer1 = (id: number) => {
     setPlayer1Id(id);
     setMatchStep('pickPlayer2');
   };
 
-  const handleSelectPlayer2 = (id: string) => {
+  const handleSelectPlayer2 = (id: number) => {
     if (!activeSession) return;
     setPlayer2Id(id);
     // Build the challenger queue: everyone except the two playing, in roster order
@@ -121,7 +121,7 @@ export default function HomePage() {
     setMatchStep('gameOn');
   };
 
-  const handleRecordWinner = async (winnerId: string) => {
+  const handleRecordWinner = async (winnerId: number) => {
     if (!activeSession?.id || player1Id === null || player2Id === null) return;
     const loserId = winnerId === player1Id ? player2Id : player1Id;
     await recordFrame(activeSession.id, winnerId, loserId);
@@ -154,7 +154,7 @@ export default function HomePage() {
     p => p.id !== undefined && !activeSession?.playerIds.includes(p.id),
   );
 
-  const handleAddPlayerToSession = async (playerId: string) => {
+  const handleAddPlayerToSession = async (playerId: number) => {
     if (!activeSession?.id) return;
     await addPlayerToSession(activeSession.id, playerId);
     // Add them to the back of the challenger queue

@@ -1,148 +1,238 @@
-import { db, type Player, type Session, type Frame } from './dexie';
+import { supabase, type Player, type Session, type Frame } from './supabase';
+import {
+  mapPlayer,
+  mapSession,
+  mapFrame,
+  type PlayerRow,
+  type SessionRow,
+  type FrameRow,
+} from './mappers';
 
 // ── Player Services ──
 
 export async function getActivePlayers(): Promise<Player[]> {
-  return db.players.filter((p) => !p.archived).toArray();
+  const { data, error } = await supabase
+    .from('players')
+    .select('*')
+    .eq('archived', false);
+  if (error) throw error;
+  return (data as PlayerRow[]).map(mapPlayer);
 }
 
 export async function getAllPlayers(): Promise<Player[]> {
-  return db.players.toArray();
+  const { data, error } = await supabase.from('players').select('*');
+  if (error) throw error;
+  return (data as PlayerRow[]).map(mapPlayer);
 }
 
-export async function addPlayer(name: string): Promise<string> {
-  const id = crypto.randomUUID();
-  await db.players.add({ id, name, createdAt: new Date(), archived: false });
-  return id;
+export async function addPlayer(name: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('players')
+    .insert({ name, archived: false })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id;
 }
 
-export async function renamePlayer(id: string, name: string): Promise<void> {
-  await db.players.update(id, { name });
+export async function renamePlayer(id: number, name: string): Promise<void> {
+  const { error } = await supabase
+    .from('players')
+    .update({ name })
+    .eq('id', id);
+  if (error) throw error;
 }
 
-export async function archivePlayer(id: string): Promise<void> {
-  await db.players.update(id, { archived: true });
+export async function archivePlayer(id: number): Promise<void> {
+  const { error } = await supabase
+    .from('players')
+    .update({ archived: true })
+    .eq('id', id);
+  if (error) throw error;
 }
 
-export async function restorePlayer(id: string): Promise<void> {
-  await db.players.update(id, { archived: false });
+export async function restorePlayer(id: number): Promise<void> {
+  const { error } = await supabase
+    .from('players')
+    .update({ archived: false })
+    .eq('id', id);
+  if (error) throw error;
 }
 
-export async function deletePlayer(id: string): Promise<void> {
-  const hasFrames = await db.frames
-    .filter((f) => f.winnerId === id || f.loserId === id)
-    .count();
-  if (hasFrames > 0) {
-    throw new Error('Cannot delete a player who has recorded frames');
-  }
-  await db.players.delete(id);
+export async function deletePlayer(id: number): Promise<void> {
+  const { error } = await supabase
+    .from('players')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
 }
 
 // ── Session Services ──
 
 export async function getActiveSession(): Promise<Session | undefined> {
-  return db.sessions.filter((s) => s.endedAt === null).first();
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .is('ended_at', null)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapSession(data as SessionRow) : undefined;
 }
 
-export async function startSession(playerIds: string[]): Promise<string> {
-  const id = crypto.randomUUID();
+export async function startSession(playerIds: number[]): Promise<number> {
   const now = new Date();
   const date = now.toISOString().slice(0, 10);
-  await db.sessions.add({ id, date, startedAt: now, endedAt: null, playerIds });
-  return id;
+  const { data, error } = await supabase
+    .from('sessions')
+    .insert({
+      date,
+      started_at: now.toISOString(),
+      ended_at: null,
+      player_ids: playerIds,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id;
 }
 
-export async function endSession(sessionId: string): Promise<void> {
-  await db.sessions.update(sessionId, { endedAt: new Date() });
+export async function endSession(sessionId: number): Promise<void> {
+  const { error } = await supabase
+    .from('sessions')
+    .update({ ended_at: new Date().toISOString() })
+    .eq('id', sessionId);
+  if (error) throw error;
 }
 
-export async function addPlayerToSession(sessionId: string, playerId: string): Promise<void> {
-  const session = await db.sessions.get(sessionId);
-  if (!session) throw new Error('Session not found');
-  if (!session.playerIds.includes(playerId)) {
-    await db.sessions.update(sessionId, {
-      playerIds: [...session.playerIds, playerId],
-    });
+export async function addPlayerToSession(sessionId: number, playerId: number): Promise<void> {
+  const { data, error: fetchError } = await supabase
+    .from('sessions')
+    .select('player_ids')
+    .eq('id', sessionId)
+    .single();
+  if (fetchError) throw fetchError;
+  const current = (data as { player_ids: number[] }).player_ids;
+  if (!current.includes(playerId)) {
+    const { error } = await supabase
+      .from('sessions')
+      .update({ player_ids: [...current, playerId] })
+      .eq('id', sessionId);
+    if (error) throw error;
   }
 }
 
-export async function getSession(id: string): Promise<Session | undefined> {
-  return db.sessions.get(id);
+export async function getSession(id: number): Promise<Session | undefined> {
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapSession(data as SessionRow) : undefined;
 }
 
 export async function getAllSessions(): Promise<Session[]> {
-  return db.sessions.orderBy('startedAt').reverse().toArray();
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .order('started_at', { ascending: false });
+  if (error) throw error;
+  return (data as SessionRow[]).map(mapSession);
 }
 
 // ── Frame Services ──
 
 export async function recordFrame(
-  sessionId: string,
-  winnerId: string,
-  loserId: string,
-): Promise<string> {
-  const id = crypto.randomUUID();
-  await db.frames.add({
-    id,
-    sessionId,
-    winnerId,
-    loserId,
-    recordedAt: new Date(),
-  });
-  return id;
+  sessionId: number,
+  winnerId: number,
+  loserId: number,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('frames')
+    .insert({
+      session_id: sessionId,
+      winner_id: winnerId,
+      loser_id: loserId,
+      recorded_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id;
 }
 
-export async function getSessionFrames(sessionId: string): Promise<Frame[]> {
-  return db.frames.where('sessionId').equals(sessionId).sortBy('recordedAt');
+export async function getSessionFrames(sessionId: number): Promise<Frame[]> {
+  const { data, error } = await supabase
+    .from('frames')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('recorded_at', { ascending: true });
+  if (error) throw error;
+  return (data as FrameRow[]).map(mapFrame);
 }
 
-export async function deleteLastFrame(sessionId: string): Promise<void> {
-  const frames = await db.frames
-    .where('sessionId')
-    .equals(sessionId)
-    .sortBy('recordedAt');
-  if (frames.length > 0) {
-    const last = frames[frames.length - 1];
-    await db.frames.delete(last.id!);
+export async function deleteLastFrame(sessionId: number): Promise<void> {
+  const { data, error: fetchError } = await supabase
+    .from('frames')
+    .select('id')
+    .eq('session_id', sessionId)
+    .order('recorded_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (data) {
+    const { error } = await supabase.from('frames').delete().eq('id', data.id);
+    if (error) throw error;
   }
 }
 
 export async function getAllFrames(): Promise<Frame[]> {
-  return db.frames.toArray();
+  const { data, error } = await supabase.from('frames').select('*');
+  if (error) throw error;
+  return (data as FrameRow[]).map(mapFrame);
 }
 
 export async function getFramesByDateRange(
   start: Date,
   end: Date,
 ): Promise<Frame[]> {
-  return db.frames
-    .where('recordedAt')
-    .between(start, end, true, true)
-    .toArray();
+  const { data, error } = await supabase
+    .from('frames')
+    .select('*')
+    .gte('recorded_at', start.toISOString())
+    .lte('recorded_at', end.toISOString());
+  if (error) throw error;
+  return (data as FrameRow[]).map(mapFrame);
 }
 
 // ── Stats Helpers ──
 
 export interface PlayerStats {
-  playerId: string;
+  playerId: number;
   playerName: string;
   framesWon: number;
   framesLost: number;
   winPercentage: number;
   sessionsPlayed: number;
-  bestSession: { sessionId: string; wins: number } | null;
-  headToHead: Record<string, { won: number; lost: number }>;
+  bestSession: { sessionId: number; wins: number } | null;
+  headToHead: Record<number, { won: number; lost: number }>;
 }
 
 export async function getPlayerStats(
-  playerId: string,
+  playerId: number,
   frames?: Frame[],
   sessions?: Session[],
 ): Promise<PlayerStats> {
   const allFrames = frames ?? (await getAllFrames());
   const allSessions = sessions ?? (await getAllSessions());
 
-  const player = await db.players.get(playerId);
+  // Fetch the player name
+  const { data: playerData } = await supabase
+    .from('players')
+    .select('name')
+    .eq('id', playerId)
+    .maybeSingle();
 
   const playerFrames = allFrames.filter(
     (f) => f.winnerId === playerId || f.loserId === playerId,
@@ -156,7 +246,7 @@ export async function getPlayerStats(
   ).length;
 
   // Head-to-head
-  const headToHead: Record<string, { won: number; lost: number }> = {};
+  const headToHead: Record<number, { won: number; lost: number }> = {};
   for (const f of playerFrames) {
     const opponentId = f.winnerId === playerId ? f.loserId : f.winnerId;
     if (!headToHead[opponentId]) headToHead[opponentId] = { won: 0, lost: 0 };
@@ -165,22 +255,22 @@ export async function getPlayerStats(
   }
 
   // Best session
-  const sessionWins: Record<string, number> = {};
+  const sessionWins: Record<number, number> = {};
   for (const f of playerFrames) {
     if (f.winnerId === playerId) {
       sessionWins[f.sessionId] = (sessionWins[f.sessionId] || 0) + 1;
     }
   }
-  let bestSession: { sessionId: string; wins: number } | null = null;
+  let bestSession: { sessionId: number; wins: number } | null = null;
   for (const [sid, wins] of Object.entries(sessionWins)) {
     if (!bestSession || wins > bestSession.wins) {
-      bestSession = { sessionId: sid, wins };
+      bestSession = { sessionId: Number(sid), wins };
     }
   }
 
   return {
     playerId,
-    playerName: player?.name ?? 'Unknown',
+    playerName: playerData?.name ?? 'Unknown',
     framesWon,
     framesLost,
     winPercentage: total > 0 ? Math.round((framesWon / total) * 100) : 0,
@@ -191,7 +281,7 @@ export async function getPlayerStats(
 }
 
 export interface LeaderboardEntry {
-  playerId: string;
+  playerId: number;
   playerName: string;
   framesWon: number;
   framesLost: number;
