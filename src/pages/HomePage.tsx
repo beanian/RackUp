@@ -10,7 +10,8 @@ import {
 } from '../db/services';
 import { useHomeData } from '../hooks/useHomeData';
 import { useObsStatus } from '../hooks/useObsStatus';
-import { playWinSound, playStreakSound, playSessionEndFanfare, isSoundEnabled, setSoundEnabled } from '../utils/sounds';
+import { playWinSound, playStreakSound, playSessionEndFanfare, playVsSplashSound, isSoundEnabled, setSoundEnabled } from '../utils/sounds';
+import VsSplash from '../components/VsSplash';
 import { getWinStreak, getStreakMessage } from '../utils/streaks';
 import { checkAndUnlock, type Achievement } from '../utils/achievements';
 import AnimatedNumber from '../components/AnimatedNumber';
@@ -63,6 +64,9 @@ export default function HomePage() {
   const [feedback, setFeedback] = useState<{ msg: string; type: 'win' | 'streak' | 'info' } | null>(null);
   const feedbackTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [soundOn, setSoundOn] = useState(isSoundEnabled());
+  const [showSplash, setShowSplash] = useState(false);
+  const pendingFeedback = useRef<{ msg: string; type: 'win' | 'streak' | 'info'; streak?: number } | null>(null);
+  const pendingAchievement = useRef<{ achievement: Achievement; playerName: string } | null>(null);
   const [newAchievement, setNewAchievement] = useState<{ achievement: Achievement; playerName: string } | null>(null);
   const achievementTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -293,6 +297,8 @@ export default function HomePage() {
     setPlayer2Id(second);
     setChallengerQueue(rest);
     setMatchStep('gameOn');
+    setShowSplash(true);
+    playVsSplashSound();
     setSelectedPlayerIds([]);
     setView('session');
     updateOverlay({
@@ -340,6 +346,8 @@ export default function HomePage() {
     const remaining = activeSession.playerIds.filter(pid => pid !== player1Id && pid !== id);
     setChallengerQueue(remaining);
     setMatchStep('gameOn');
+    setShowSplash(true);
+    playVsSplashSound();
     // Compute h2h between player1 and the selected player2
     const p1h2h = sessionFrames.filter(f => f.winnerId === player1Id && f.loserId === id).length;
     const p2h2h = sessionFrames.filter(f => f.winnerId === id && f.loserId === player1Id).length;
@@ -409,22 +417,18 @@ export default function HomePage() {
     const streak = getWinStreak(optimisticFrames, winnerId);
     const streakMsg = getStreakMessage(streak);
 
+    // Queue feedback to show after splash dismisses
     if (streakMsg) {
-      showFeedback(`${playerName(winnerId)} wins! ${streakMsg}`, 'streak');
-      playStreakSound(streak);
+      pendingFeedback.current = { msg: `${playerName(winnerId)} wins! ${streakMsg}`, type: 'streak', streak };
     } else {
-      showFeedback(`${playerName(winnerId)} wins!`, 'win');
-      playWinSound();
+      pendingFeedback.current = { msg: `${playerName(winnerId)} wins!`, type: 'win' };
     }
 
     // Check session-scoped achievements
     const optimisticAllFrames = [...allFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date() } as Frame];
     const newAchs = checkAndUnlock(winnerId, optimisticAllFrames, [], optimisticFrames, monthlyTopId);
     if (newAchs.length > 0) {
-      // Show after win toast finishes (match its duration)
-      const winToastDuration = streakMsg ? 2500 : 1500;
-      const winnerName = playerName(winnerId);
-      setTimeout(() => showAchievementToast(newAchs[0], winnerName), winToastDuration + 200);
+      pendingAchievement.current = { achievement: newAchs[0], playerName: playerName(winnerId) };
     }
 
     if (challengerQueue.length > 0) {
@@ -436,6 +440,8 @@ export default function HomePage() {
       setPlayer1Id(winnerId);
       setPlayer2Id(loserId);
     }
+    setShowSplash(true);
+    playVsSplashSound();
 
     // Fire DB write + refresh in background (don't block the UI)
     recordFrame(activeSession.id, winnerId, loserId)
@@ -1062,6 +1068,35 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      {/* VS Splash overlay */}
+      {showSplash && player1Id !== null && player2Id !== null && (
+        <VsSplash
+          player1={{ name: playerName(player1Id), emoji: playerEmoji(player1Id) }}
+          player2={{ name: playerName(player2Id), emoji: playerEmoji(player2Id) }}
+          h2h={allTimeH2H}
+          onDismiss={() => {
+            setShowSplash(false);
+            // Flush any pending feedback/achievement that was queued during the splash
+            if (pendingFeedback.current) {
+              const fb = pendingFeedback.current;
+              pendingFeedback.current = null;
+              if (fb.type === 'streak' && fb.streak) {
+                playStreakSound(fb.streak);
+              } else {
+                playWinSound();
+              }
+              showFeedback(fb.msg, fb.type);
+            }
+            if (pendingAchievement.current) {
+              const ach = pendingAchievement.current;
+              pendingAchievement.current = null;
+              const winToastDuration = feedback?.type === 'streak' ? 2500 : 1500;
+              setTimeout(() => showAchievementToast(ach.achievement, ach.playerName), winToastDuration + 200);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

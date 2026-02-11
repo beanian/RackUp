@@ -256,6 +256,67 @@ input:focus {
   animation: toast-in 0.25s ease-out, streak-glow 1.5s ease-in-out infinite;
 }
 
+/* ── VS Splash animations ── */
+
+@keyframes vs-slide-left {
+  from { opacity: 0; transform: translateX(-80px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes vs-slide-right {
+  from { opacity: 0; transform: translateX(80px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes vs-pop {
+  0% { opacity: 0; transform: scale(0.3); }
+  60% { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes vs-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes vs-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes vs-glow-pulse {
+  0%, 100% { text-shadow: 0 0 10px rgba(217,168,48,0.5), 0 0 30px rgba(217,168,48,0.3); }
+  50% { text-shadow: 0 0 20px rgba(217,168,48,0.8), 0 0 50px rgba(217,168,48,0.5), 0 0 80px rgba(217,168,48,0.2); }
+}
+
+.vs-slide-left {
+  animation: vs-slide-left 0.5s ease-out both;
+}
+
+.vs-slide-right {
+  animation: vs-slide-right 0.5s ease-out both;
+}
+
+.vs-pop {
+  animation: vs-pop 0.6s ease-out 0.2s both;
+}
+
+.vs-glow {
+  animation: vs-glow-pulse 1.5s ease-in-out infinite;
+}
+
+.vs-stat-fade {
+  animation: vs-fade-in 0.4s ease-out 0.5s both;
+}
+
+.vs-hint-fade {
+  animation: vs-fade-in 0.4s ease-out 1.5s both;
+}
+
+.vs-fade-out {
+  animation: vs-fade-out 0.3s ease-in forwards;
+}
+
 /* ── Large screen scaling (24-32" wall display) ── */
 
 @media (min-width: 1280px) {

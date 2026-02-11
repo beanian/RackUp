@@ -73,6 +73,17 @@ export async function playStreakSound(streak: number): Promise<void> {
   }
 }
 
+let vsSplashAudio: HTMLAudioElement | null = null;
+
+export function playVsSplashSound(): void {
+  if (!isSoundEnabled()) return;
+  if (!vsSplashAudio) {
+    vsSplashAudio = new Audio(import.meta.env.BASE_URL + 'vs-splash.mp3');
+  }
+  vsSplashAudio.currentTime = 0;
+  vsSplashAudio.play().catch(() => {});
+}
+
 export async function playSessionEndFanfare(): Promise<void> {
   if (!isSoundEnabled()) return;
   const ac = await getCtx();
