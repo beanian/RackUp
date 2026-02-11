@@ -99,6 +99,10 @@ src/
 
 **Frame** -- A single game of pool within a session, recording the winner and loser.
 
+## User Guide
+
+See [USER_GUIDE.md](USER_GUIDE.md) for a step-by-step guide on how to use the app.
+
 ## Design
 
 The UI uses a chalkboard aesthetic with billiard-table green backgrounds, chalk-white text, wood-grain trim, and handwritten-style fonts (Caveat, Bebas Neue, Alegreya Sans). Responsive breakpoints support tablets through 32" wall displays.
