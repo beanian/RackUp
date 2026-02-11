@@ -6,6 +6,7 @@ import HistoryPage from './pages/HistoryPage';
 import SessionDetailPage from './pages/SessionDetailPage';
 import StatsPage from './pages/StatsPage';
 import CameraPage from './pages/CameraPage';
+import RecordingsPage from './pages/RecordingsPage';
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/players" element={<PlayersPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/history/:sessionId" element={<SessionDetailPage />} />
+        <Route path="/recordings" element={<RecordingsPage />} />
         <Route path="/stats" element={<StatsPage />} />
       </Route>
     </Routes>

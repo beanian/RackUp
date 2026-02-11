@@ -377,7 +377,7 @@ export default function HomePage() {
     }
 
     // Fire DB write + refresh in background (don't block the UI)
-    recordFrame(activeSession.id, winnerId, loserId, videoFilePath)
+    recordFrame(activeSession.id, winnerId, loserId)
       .then(() => refresh())
       .catch(e => console.warn('Failed to record frame:', e));
   };

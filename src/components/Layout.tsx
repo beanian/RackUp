@@ -5,6 +5,7 @@ const navItems = [
   { to: '/camera', label: 'Camera', icon: '⬤' },
   { to: '/players', label: 'Players', icon: '⬤' },
   { to: '/history', label: 'History', icon: '⬤' },
+  { to: '/recordings', label: 'Recordings', icon: '⬤' },
   { to: '/stats', label: 'Stats', icon: '⬤' },
 ];
 

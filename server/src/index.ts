@@ -1,7 +1,8 @@
 import cors from "cors";
 import express from "express";
 import type { Request, Response } from "express";
-import { mkdir } from "fs/promises";
+import { createReadStream, statSync } from "fs";
+import { mkdir, readdir, stat } from "fs/promises";
 import { fileURLToPath } from "url";
 import path from "path";
 import { obs } from "./obs.js";
@@ -124,6 +125,135 @@ app.post("/api/obs/overlay", async (req: Request, res: Response) => {
     await obs.setOverlayText(overlayText);
 
     res.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+// ── Recordings Routes ──
+
+interface RecordingMeta {
+  relativePath: string;
+  date: string;
+  time: string;
+  player1: string;
+  player2: string;
+  frameNumber: number;
+  sizeBytes: number;
+}
+
+const FILENAME_RE =
+  /^(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})_(.+)-vs-(.+)_Frame(\d+)\.mkv$/;
+
+app.get("/api/recordings", async (_req: Request, res: Response) => {
+  try {
+    const baseDir = config.recordingsBaseDir;
+
+    let entries: string[];
+    try {
+      entries = await readdir(baseDir, { recursive: true }) as string[];
+    } catch {
+      res.json({ recordings: [] });
+      return;
+    }
+
+    const mkvFiles = entries.filter((e) => e.endsWith(".mkv"));
+
+    const recordings: RecordingMeta[] = await Promise.all(
+      mkvFiles.map(async (relativePath) => {
+        const fullPath = path.join(baseDir, relativePath);
+        const fileStat = await stat(fullPath);
+        const filename = path.basename(relativePath);
+        const match = filename.match(FILENAME_RE);
+
+        if (match) {
+          return {
+            relativePath: relativePath.replace(/\\/g, "/"),
+            date: match[1],
+            time: `${match[2]}:${match[3]}`,
+            player1: match[4],
+            player2: match[5],
+            frameNumber: Number(match[6]),
+            sizeBytes: fileStat.size,
+          };
+        }
+
+        return {
+          relativePath: relativePath.replace(/\\/g, "/"),
+          date: fileStat.mtime.toISOString().slice(0, 10),
+          time: fileStat.mtime.toISOString().slice(11, 16),
+          player1: "Unknown",
+          player2: "Unknown",
+          frameNumber: 0,
+          sizeBytes: fileStat.size,
+        };
+      }),
+    );
+
+    recordings.sort((a, b) => {
+      const cmp = b.date.localeCompare(a.date);
+      if (cmp !== 0) return cmp;
+      return b.time.localeCompare(a.time);
+    });
+
+    res.json({ recordings });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+app.get("/api/recordings/stream", (req: Request, res: Response) => {
+  try {
+    const relativePath = req.query.path as string | undefined;
+    if (!relativePath) {
+      res.status(400).json({ error: "Missing path parameter" });
+      return;
+    }
+
+    const baseDir = path.resolve(config.recordingsBaseDir);
+    const fullPath = path.resolve(baseDir, relativePath);
+
+    // Security: prevent directory traversal
+    if (!fullPath.startsWith(baseDir + path.sep) && fullPath !== baseDir) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+
+    // Security: only allow .mkv files
+    if (!fullPath.toLowerCase().endsWith(".mkv")) {
+      res.status(400).json({ error: "Only .mkv files are supported" });
+      return;
+    }
+
+    const fileStat = statSync(fullPath);
+    const fileSize = fileStat.size;
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = end - start + 1;
+
+      res.writeHead(206, {
+        "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": chunkSize,
+        "Content-Type": "video/x-matroska",
+      });
+
+      createReadStream(fullPath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        "Content-Length": fileSize,
+        "Content-Type": "video/x-matroska",
+        "Accept-Ranges": "bytes",
+      });
+
+      createReadStream(fullPath).pipe(res);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: message });
