@@ -50,6 +50,9 @@ class OBSClient {
       } catch {
         // Ignore if GetRecordStatus fails
       }
+
+      // Auto-setup: virtual camera, browser source overlay
+      await this.autoSetup();
     } catch (err) {
       this._connected = false;
       const message = err instanceof Error ? err.message : String(err);
@@ -177,6 +180,93 @@ class OBSClient {
   private async getCurrentSceneName(): Promise<string> {
     const result = await this.obs.call("GetCurrentProgramScene");
     return result.currentProgramSceneName;
+  }
+
+  // ── Auto-setup on connect ──
+
+  private async autoSetup(): Promise<void> {
+    await this.ensureVirtualCamera();
+    await this.ensureBrowserSource();
+  }
+
+  private async ensureVirtualCamera(): Promise<void> {
+    try {
+      const status = await this.obs.call("GetVirtualCamStatus");
+      if (!status.outputActive) {
+        await this.obs.call("StartVirtualCam");
+        console.log("[OBS] Virtual Camera started");
+      } else {
+        console.log("[OBS] Virtual Camera already running");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[OBS] Could not start Virtual Camera: ${msg}`);
+    }
+  }
+
+  private async ensureBrowserSource(): Promise<void> {
+    const sourceName = "RackUp Scorebug";
+    const overlayUrl = `http://localhost:${config.serverPort}/overlay`;
+
+    try {
+      const sceneName = await this.getCurrentSceneName();
+
+      // Check if source already exists in the current scene
+      const { sceneItems } = await this.obs.call("GetSceneItemList", { sceneName });
+      const existing = sceneItems.find(
+        (item: Record<string, unknown>) => item.sourceName === sourceName,
+      );
+
+      if (existing) {
+        // Update URL in case server port changed
+        try {
+          await this.obs.call("SetInputSettings", {
+            inputName: sourceName,
+            inputSettings: { url: overlayUrl },
+          });
+        } catch {
+          // Ignore if settings update fails
+        }
+        console.log(`[OBS] Browser source "${sourceName}" already exists`);
+        return;
+      }
+
+      // Create the browser source
+      await this.obs.call("CreateInput", {
+        sceneName,
+        inputName: sourceName,
+        inputKind: "browser_source",
+        inputSettings: {
+          url: overlayUrl,
+          width: 1920,
+          height: 1080,
+          fps: 30,
+          shutdown: false,       // Keep alive when not visible
+          restart_when_active: false,
+          css: "",               // No custom CSS
+        },
+      });
+      console.log(`[OBS] Created browser source "${sourceName}"`);
+
+      // Move it to the top of the scene (renders on top of camera)
+      const { sceneItems: updatedItems } = await this.obs.call("GetSceneItemList", { sceneName });
+      const newItem = updatedItems.find(
+        (item: Record<string, unknown>) => item.sourceName === sourceName,
+      );
+      if (newItem) {
+        const sceneItemId = newItem.sceneItemId as number;
+        // Index 0 = top of the render order in OBS
+        await this.obs.call("SetSceneItemIndex", {
+          sceneName,
+          sceneItemId,
+          sceneItemIndex: updatedItems.length - 1,
+        });
+        console.log(`[OBS] Moved "${sourceName}" to top of scene`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[OBS] Could not setup browser source: ${msg}`);
+    }
   }
 
   generateFilename(player1: string, player2: string, frameNumber: number): string {
