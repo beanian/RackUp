@@ -381,7 +381,7 @@ export default function HomePage() {
       </div>
 
       {/* ── Main Area: Current Match ── */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 xl:px-10 min-h-0">
+      <div className="flex-1 flex flex-col items-center px-4 xl:px-10 py-4 min-h-0 overflow-y-auto">
 
         {/* Selecting Player 1 */}
         {matchStep === 'pickPlayer1' && (
