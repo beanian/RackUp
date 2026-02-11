@@ -36,7 +36,7 @@ export async function loadAchievementsCache(): Promise<void> {
     return;
   }
   // Clear and rebuild
-  for (const key of Object.keys(cache)) delete cache[Number(key) as unknown as string];
+  for (const key of Object.keys(cache)) delete cache[Number(key)];
   for (const row of data ?? []) {
     const pid = row.player_id as number;
     if (!cache[pid]) cache[pid] = [];

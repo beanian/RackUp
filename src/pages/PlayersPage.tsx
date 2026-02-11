@@ -10,7 +10,7 @@ import {
   updatePlayerEmoji,
 } from '../db/services';
 import VirtualKeyboard from '../components/VirtualKeyboard';
-import EmojiPicker, { type EmojiClickData } from 'emoji-picker-react';
+import EmojiPicker, { Theme, type EmojiClickData } from 'emoji-picker-react';
 
 export default function PlayersPage() {
   const [activePlayers, setActivePlayers] = useState<Player[]>([]);
@@ -129,7 +129,7 @@ export default function PlayersPage() {
                   setNewEmoji(emojiData.emoji);
                   setShowEmojiPicker(null);
                 }}
-                theme={'dark' as const}
+                theme={Theme.DARK}
                 width="100%"
                 height={350}
                 searchPlaceholder="Search emojis..."
@@ -204,7 +204,7 @@ export default function PlayersPage() {
                         setRenameEmoji(emojiData.emoji);
                         setShowEmojiPicker(null);
                       }}
-                      theme={'dark' as const}
+                      theme={Theme.DARK}
                       width="100%"
                       height={350}
                       searchPlaceholder="Search emojis..."
@@ -291,7 +291,7 @@ export default function PlayersPage() {
                       onEmojiClick={(emojiData: EmojiClickData) => {
                         handleEmojiChange(player.id!, emojiData.emoji);
                       }}
-                      theme={'dark' as const}
+                      theme={Theme.DARK}
                       width="100%"
                       height={350}
                       searchPlaceholder="Search emojis..."

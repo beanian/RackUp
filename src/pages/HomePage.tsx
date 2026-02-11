@@ -61,10 +61,10 @@ export default function HomePage() {
   const [confirmUndo, setConfirmUndo] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [feedback, setFeedback] = useState<{ msg: string; type: 'win' | 'streak' | 'info' } | null>(null);
-  const feedbackTimer = useRef<ReturnType<typeof setTimeout>>();
-  const [soundOn, setSoundOn] = useState(isSoundEnabled);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [soundOn, setSoundOn] = useState(isSoundEnabled());
   const [newAchievement, setNewAchievement] = useState<{ achievement: Achievement; playerName: string } | null>(null);
-  const achievementTimer = useRef<ReturnType<typeof setTimeout>>();
+  const achievementTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // ── Data ──
 
