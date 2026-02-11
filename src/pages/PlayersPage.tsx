@@ -7,14 +7,25 @@ import {
   archivePlayer,
   restorePlayer,
   deletePlayer,
+  updatePlayerEmoji,
 } from '../db/services';
 import VirtualKeyboard from '../components/VirtualKeyboard';
+
+const EMOJI_OPTIONS = [
+  '\uD83C\uDFB1', '\uD83E\uDD48', '\uD83C\uDFC6', '\uD83D\uDD25', '\u2B50',
+  '\uD83D\uDC51', '\uD83E\uDD85', '\uD83E\uDD88', '\uD83D\uDC3B', '\uD83D\uDC3A',
+  '\uD83E\uDD81', '\uD83D\uDC22', '\uD83D\uDC0D', '\uD83E\uDD89', '\uD83E\uDD8A',
+  '\uD83D\uDC35', '\uD83D\uDC2F', '\uD83D\uDC32', '\uD83D\uDE80', '\u26A1',
+  '\uD83C\uDFAF', '\uD83C\uDFA9', '\uD83D\uDC80', '\uD83E\uDD16', '\uD83D\uDC7B',
+];
 
 export default function PlayersPage() {
   const [activePlayers, setActivePlayers] = useState<Player[]>([]);
   const [archivedPlayers, setArchivedPlayers] = useState<Player[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newEmoji, setNewEmoji] = useState('\uD83C\uDFB1');
+  const [editingEmojiId, setEditingEmojiId] = useState<number | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [confirmArchiveId, setConfirmArchiveId] = useState<number | null>(null);
@@ -35,9 +46,16 @@ export default function PlayersPage() {
   async function handleAdd() {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    await addPlayer(trimmed);
+    await addPlayer(trimmed, newEmoji);
     setNewName('');
+    setNewEmoji('\uD83C\uDFB1');
     setShowAddForm(false);
+    refresh();
+  }
+
+  async function handleEmojiChange(playerId: number, emoji: string) {
+    await updatePlayerEmoji(playerId, emoji);
+    setEditingEmojiId(null);
     refresh();
   }
 
@@ -80,22 +98,46 @@ export default function PlayersPage() {
       {showAddForm ? (
         <div className="mb-6 xl:mb-10 panel p-4 xl:p-8">
           <label className="block text-chalk-dim text-sm xl:text-lg mb-2 xl:mb-3 uppercase tracking-wider">Player name</label>
-          <input
-            type="text"
-            inputMode="none"
-            autoFocus
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleAdd();
-              if (e.key === 'Escape') {
-                setShowAddForm(false);
-                setNewName('');
-              }
-            }}
-            placeholder="Enter name..."
-            className="w-full px-4 py-3 xl:px-6 xl:py-5 rounded-lg bg-board-dark border border-board-light text-chalk text-lg xl:text-2xl placeholder-chalk-dim"
-          />
+          <div className="flex items-center gap-3 xl:gap-4 mb-3">
+            <button
+              onClick={() => {
+                const idx = EMOJI_OPTIONS.indexOf(newEmoji);
+                setNewEmoji(EMOJI_OPTIONS[(idx + 1) % EMOJI_OPTIONS.length]);
+              }}
+              className="btn-press w-14 h-14 xl:w-20 xl:h-20 rounded-lg bg-board-dark border border-board-light text-3xl xl:text-5xl flex items-center justify-center shrink-0"
+            >
+              {newEmoji}
+            </button>
+            <input
+              type="text"
+              inputMode="none"
+              autoFocus
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleAdd();
+                if (e.key === 'Escape') {
+                  setShowAddForm(false);
+                  setNewName('');
+                }
+              }}
+              placeholder="Enter name..."
+              className="flex-1 px-4 py-3 xl:px-6 xl:py-5 rounded-lg bg-board-dark border border-board-light text-chalk text-lg xl:text-2xl placeholder-chalk-dim"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 xl:gap-3 mb-3">
+            {EMOJI_OPTIONS.map((e) => (
+              <button
+                key={e}
+                onClick={() => setNewEmoji(e)}
+                className={`btn-press w-10 h-10 xl:w-14 xl:h-14 rounded-lg text-xl xl:text-3xl flex items-center justify-center ${
+                  newEmoji === e ? 'bg-gold/20 border-2 border-gold' : 'bg-board-dark border border-board-light/30'
+                }`}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
           <VirtualKeyboard
             value={newName}
             onChange={setNewName}
@@ -179,31 +221,58 @@ export default function PlayersPage() {
               </div>
             ) : (
               /* Normal display */
-              <div className="flex items-center justify-between gap-3 xl:gap-5">
-                <span className="text-[28px] xl:text-[44px] 2xl:text-[52px] font-semibold text-chalk chalk-text truncate flex-1">
-                  {player.name}
-                </span>
-                <div className="flex gap-2 xl:gap-4 shrink-0">
-                  <button
-                    onClick={() => {
-                      setRenamingId(player.id!);
-                      setRenameValue(player.name);
-                      setConfirmArchiveId(null);
-                    }}
-                    className="btn-press min-h-[64px] xl:min-h-[96px] min-w-[64px] xl:min-w-[96px] px-4 xl:px-6 rounded-lg bg-board-light text-chalk-dim font-semibold text-base xl:text-xl border border-board-light"
-                  >
-                    Rename
-                  </button>
-                  <button
-                    onClick={() => {
-                      setConfirmArchiveId(player.id!);
-                      setRenamingId(null);
-                    }}
-                    className="btn-press min-h-[64px] xl:min-h-[96px] min-w-[64px] xl:min-w-[96px] px-4 xl:px-6 rounded-lg bg-board-light text-loss font-semibold text-base xl:text-xl border border-board-light"
-                  >
-                    Archive
-                  </button>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3 xl:gap-5">
+                  <div className="flex items-center gap-3 xl:gap-4 truncate flex-1">
+                    <button
+                      onClick={() => setEditingEmojiId(editingEmojiId === player.id ? null : player.id!)}
+                      className="btn-press text-3xl xl:text-5xl shrink-0"
+                    >
+                      {player.emoji || '\uD83C\uDFB1'}
+                    </button>
+                    <span className="text-[28px] xl:text-[44px] 2xl:text-[52px] font-semibold text-chalk chalk-text truncate">
+                      {player.name}
+                    </span>
+                  </div>
+                  <div className="flex gap-2 xl:gap-4 shrink-0">
+                    <button
+                      onClick={() => {
+                        setRenamingId(player.id!);
+                        setRenameValue(player.name);
+                        setConfirmArchiveId(null);
+                        setEditingEmojiId(null);
+                      }}
+                      className="btn-press min-h-[64px] xl:min-h-[96px] min-w-[64px] xl:min-w-[96px] px-4 xl:px-6 rounded-lg bg-board-light text-chalk-dim font-semibold text-base xl:text-xl border border-board-light"
+                    >
+                      Rename
+                    </button>
+                    <button
+                      onClick={() => {
+                        setConfirmArchiveId(player.id!);
+                        setRenamingId(null);
+                        setEditingEmojiId(null);
+                      }}
+                      className="btn-press min-h-[64px] xl:min-h-[96px] min-w-[64px] xl:min-w-[96px] px-4 xl:px-6 rounded-lg bg-board-light text-loss font-semibold text-base xl:text-xl border border-board-light"
+                    >
+                      Archive
+                    </button>
+                  </div>
                 </div>
+                {editingEmojiId === player.id && (
+                  <div className="flex flex-wrap gap-2 xl:gap-3 pt-1 pb-1">
+                    {EMOJI_OPTIONS.map((e) => (
+                      <button
+                        key={e}
+                        onClick={() => handleEmojiChange(player.id!, e)}
+                        className={`btn-press w-10 h-10 xl:w-14 xl:h-14 rounded-lg text-xl xl:text-3xl flex items-center justify-center ${
+                          (player.emoji || '\uD83C\uDFB1') === e ? 'bg-gold/20 border-2 border-gold' : 'bg-board-dark border border-board-light/30'
+                        }`}
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

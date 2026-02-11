@@ -8,6 +8,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export interface Player {
   id?: number;
   name: string;
+  emoji?: string;
   createdAt: Date;
   archived: boolean;
 }

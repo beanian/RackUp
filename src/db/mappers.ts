@@ -5,6 +5,7 @@ import type { Player, Session, Frame } from './supabase';
 export interface PlayerRow {
   id: number;
   name: string;
+  emoji: string | null;
   created_at: string;
   archived: boolean;
 }
@@ -32,6 +33,7 @@ export function mapPlayer(row: PlayerRow): Player {
   return {
     id: row.id,
     name: row.name,
+    emoji: row.emoji ?? undefined,
     createdAt: new Date(row.created_at),
     archived: row.archived,
   };

@@ -25,14 +25,24 @@ export async function getAllPlayers(): Promise<Player[]> {
   return (data as PlayerRow[]).map(mapPlayer);
 }
 
-export async function addPlayer(name: string): Promise<number> {
+export async function addPlayer(name: string, emoji?: string): Promise<number> {
+  const row: Record<string, unknown> = { name, archived: false };
+  if (emoji) row.emoji = emoji;
   const { data, error } = await supabase
     .from('players')
-    .insert({ name, archived: false })
+    .insert(row)
     .select('id')
     .single();
   if (error) throw error;
   return data.id;
+}
+
+export async function updatePlayerEmoji(id: number, emoji: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('players')
+    .update({ emoji })
+    .eq('id', id);
+  if (error) throw error;
 }
 
 export async function renamePlayer(id: number, name: string): Promise<void> {
@@ -332,7 +342,16 @@ export async function getLeaderboard(
     };
   });
 
+  const MIN_FRAMES = 5;
   return entries
     .filter((e) => e.framesWon + e.framesLost > 0)
-    .sort((a, b) => b.framesWon - a.framesWon);
+    .sort((a, b) => {
+      const aQualified = (a.framesWon + a.framesLost) >= MIN_FRAMES;
+      const bQualified = (b.framesWon + b.framesLost) >= MIN_FRAMES;
+      // Qualified players always rank above unqualified
+      if (aQualified !== bQualified) return aQualified ? -1 : 1;
+      // Among same tier, sort by win percentage, then total frames as tiebreaker
+      if (a.winPercentage !== b.winPercentage) return b.winPercentage - a.winPercentage;
+      return (b.framesWon + b.framesLost) - (a.framesWon + a.framesLost);
+    });
 }

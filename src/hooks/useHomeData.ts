@@ -5,6 +5,7 @@ import { mapPlayer, mapSession, mapFrame, type PlayerRow, type SessionRow, type 
 
 interface MonthlyEntry {
   name: string;
+  emoji?: string;
   won: number;
   lost: number;
 }
@@ -14,6 +15,7 @@ interface HomeData {
   players: Player[];
   allPlayers: Player[];
   sessionFrames: Frame[];
+  allFrames: Frame[];
   monthlyLeaderboard: MonthlyEntry[];
   refresh: () => void;
 }
@@ -24,6 +26,7 @@ export function useHomeData(): HomeData {
   const [players, setPlayers] = useState<Player[]>([]);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   const [sessionFrames, setSessionFrames] = useState<Frame[]>([]);
+  const [allFrames, setAllFrames] = useState<Frame[]>([]);
   const [monthlyLeaderboard, setMonthlyLeaderboard] = useState<MonthlyEntry[]>([]);
 
   const refresh = useCallback(() => {
@@ -60,6 +63,10 @@ export function useHomeData(): HomeData {
         frames = (frameData as FrameRow[] | null)?.map(mapFrame) ?? [];
       }
 
+      // Fetch all frames for predictions/achievements
+      const { data: allFrameData } = await supabase.from('frames').select('*');
+      const allF = (allFrameData as FrameRow[] | null)?.map(mapFrame) ?? [];
+
       // Monthly leaderboard
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -75,7 +82,7 @@ export function useHomeData(): HomeData {
 
       const map = new Map<number, MonthlyEntry>();
       for (const p of allP) {
-        if (p.id !== undefined) map.set(p.id, { name: p.name, won: 0, lost: 0 });
+        if (p.id !== undefined) map.set(p.id, { name: p.name, emoji: p.emoji, won: 0, lost: 0 });
       }
       for (const f of monthFrames) {
         const w = map.get(f.winnerId);
@@ -83,15 +90,27 @@ export function useHomeData(): HomeData {
         const l = map.get(f.loserId);
         if (l) l.lost++;
       }
+      const MIN_FRAMES = 5;
       const board = [...map.values()]
         .filter((e) => e.won + e.lost > 0)
-        .sort((a, b) => b.won - a.won);
+        .sort((a, b) => {
+          const aTotal = a.won + a.lost;
+          const bTotal = b.won + b.lost;
+          const aQualified = aTotal >= MIN_FRAMES;
+          const bQualified = bTotal >= MIN_FRAMES;
+          if (aQualified !== bQualified) return aQualified ? -1 : 1;
+          const aPct = aTotal > 0 ? a.won / aTotal : 0;
+          const bPct = bTotal > 0 ? b.won / bTotal : 0;
+          if (aPct !== bPct) return bPct - aPct;
+          return bTotal - aTotal;
+        });
 
       if (!cancelled) {
         setActiveSession(session);
         setAllPlayers(allP);
         setPlayers(activeP);
         setSessionFrames(frames);
+        setAllFrames(allF);
         setMonthlyLeaderboard(board);
       }
     }
@@ -100,5 +119,5 @@ export function useHomeData(): HomeData {
     return () => { cancelled = true; };
   }, [refreshKey]);
 
-  return { activeSession, players, allPlayers, sessionFrames, monthlyLeaderboard, refresh };
+  return { activeSession, players, allPlayers, sessionFrames, allFrames, monthlyLeaderboard, refresh };
 }

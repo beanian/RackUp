@@ -140,6 +140,13 @@
     100% { background-color: var(--scorebug-bg); }
   }
 
+  .player-emoji {
+    font-size: 28px;
+    line-height: 72px;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+
   .player-name {
     font-size: 26px;
     font-weight: 600;
@@ -245,6 +252,7 @@
 <!-- Scorebug -->
 <div class="scorebug hidden" id="scorebug">
   <div class="player-panel player-a" id="panelA">
+    <span class="player-emoji" id="emojiA"></span>
     <span class="player-name" id="nameA"></span>
   </div>
   <div class="score-centre">
@@ -253,6 +261,7 @@
     <span class="score-value" id="scoreB">0</span>
   </div>
   <div class="player-panel player-b" id="panelB">
+    <span class="player-emoji" id="emojiB"></span>
     <span class="player-name" id="nameB"></span>
   </div>
 </div>
@@ -271,6 +280,8 @@
   const scorebugEl = document.getElementById('scorebug');
   const nameAEl    = document.getElementById('nameA');
   const nameBEl    = document.getElementById('nameB');
+  const emojiAEl   = document.getElementById('emojiA');
+  const emojiBEl   = document.getElementById('emojiB');
   const scoreAEl   = document.getElementById('scoreA');
   const scoreBEl   = document.getElementById('scoreB');
   const panelAEl   = document.getElementById('panelA');
@@ -305,6 +316,10 @@
 
   function playerName(player) {
     return player ? player.name : '';
+  }
+
+  function playerEmoji(player) {
+    return player && player.emoji ? player.emoji : '';
   }
 
   function playerScore(player) {
@@ -344,6 +359,12 @@
   function setNames(state) {
     nameAEl.textContent = playerName(state.playerA);
     nameBEl.textContent = playerName(state.playerB);
+    var eA = playerEmoji(state.playerA);
+    var eB = playerEmoji(state.playerB);
+    emojiAEl.textContent = eA;
+    emojiBEl.textContent = eB;
+    emojiAEl.style.display = eA ? '' : 'none';
+    emojiBEl.style.display = eB ? '' : 'none';
   }
 
   function setScores(state) {

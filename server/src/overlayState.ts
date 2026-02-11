@@ -3,6 +3,7 @@ import type { Response } from "express";
 interface OverlayPlayer {
   id: string;
   name: string;
+  emoji?: string;
   score: number;
 }
 

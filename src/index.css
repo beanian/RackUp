@@ -226,6 +226,36 @@ input:focus {
   max-width: 50%;
 }
 
+/* ── Gamification animations ── */
+
+@keyframes toast-in {
+  from { opacity: 0; scale: 0.92; }
+  to { opacity: 1; scale: 1; }
+}
+
+@keyframes badge-pop {
+  0% { opacity: 0; scale: 0.5; }
+  60% { opacity: 1; scale: 1.1; }
+  100% { opacity: 1; scale: 1; }
+}
+
+@keyframes streak-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(217,168,48,0.4); }
+  50% { box-shadow: 0 0 20px rgba(217,168,48,0.8), 0 0 40px rgba(217,168,48,0.3); }
+}
+
+.toast-enter {
+  animation: toast-in 0.25s ease-out;
+}
+
+.badge-enter {
+  animation: badge-pop 0.4s ease-out;
+}
+
+.streak-toast {
+  animation: toast-in 0.25s ease-out, streak-glow 1.5s ease-in-out infinite;
+}
+
 /* ── Large screen scaling (24-32" wall display) ── */
 
 @media (min-width: 1280px) {

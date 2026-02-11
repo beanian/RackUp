@@ -10,6 +10,10 @@ import {
 } from '../db/services';
 import { useHomeData } from '../hooks/useHomeData';
 import { useObsStatus } from '../hooks/useObsStatus';
+import { playWinSound, playStreakSound, playSessionEndFanfare, isSoundEnabled, setSoundEnabled } from '../utils/sounds';
+import { getWinStreak, getStreakMessage } from '../utils/streaks';
+import { checkAndUnlock, type Achievement } from '../utils/achievements';
+import AnimatedNumber from '../components/AnimatedNumber';
 
 type View = 'idle' | 'picking' | 'session' | 'summary';
 type MatchStep = 'pickPlayer1' | 'pickPlayer2' | 'gameOn';
@@ -56,7 +60,11 @@ export default function HomePage() {
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [confirmUndo, setConfirmUndo] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ msg: string; type: 'win' | 'streak' | 'info' } | null>(null);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout>>();
+  const [soundOn, setSoundOn] = useState(isSoundEnabled);
+  const [newAchievement, setNewAchievement] = useState<{ achievement: Achievement; playerName: string } | null>(null);
+  const achievementTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // ── Data ──
 
@@ -65,6 +73,7 @@ export default function HomePage() {
     players,
     allPlayers,
     sessionFrames,
+    allFrames,
     monthlyLeaderboard,
     refresh,
   } = useHomeData();
@@ -123,9 +132,13 @@ export default function HomePage() {
   const navigate = useNavigate();
 
   // PiP preview via OBS Virtual Camera
-  const pipVideoRef = useRef<HTMLVideoElement>(null);
   const pipStreamRef = useRef<MediaStream | null>(null);
   const [pipReady, setPipReady] = useState(false);
+  const pipVideoRef = useCallback((el: HTMLVideoElement | null) => {
+    if (el && pipStreamRef.current) {
+      el.srcObject = pipStreamRef.current;
+    }
+  }, [pipReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!recordingEnabled || !obsStatus.connected) {
@@ -176,13 +189,6 @@ export default function HomePage() {
     };
   }, [recordingEnabled, obsStatus.connected]);
 
-  // Attach stream to video element once both are ready
-  useEffect(() => {
-    if (pipReady && pipVideoRef.current && pipStreamRef.current) {
-      pipVideoRef.current.srcObject = pipStreamRef.current;
-    }
-  }, [pipReady]);
-
   // Summary data
   const [summaryData, setSummaryData] = useState<{
     frames: Frame[];
@@ -198,9 +204,14 @@ export default function HomePage() {
     return 'idle';
   }, [view, activeSession]);
 
-  // ── Player name lookup ──
+  // ── Player name/emoji lookup ──
   const playerName = useCallback(
     (id: number) => allPlayers.find(p => p.id === id)?.name ?? '?',
+    [allPlayers],
+  );
+
+  const playerEmoji = useCallback(
+    (id: number) => allPlayers.find(p => p.id === id)?.emoji,
     [allPlayers],
   );
 
@@ -238,11 +249,39 @@ export default function HomePage() {
       .sort((a, b) => b.frames - a.frames);
   }, [activeSession, sessionFrames, playerName]);
 
+  // ── Monthly top player (for giant killer achievement) ──
+  const monthlyTopId = useMemo(() => {
+    if (monthlyLeaderboard.length === 0) return undefined;
+    const topName = monthlyLeaderboard[0].name;
+    const topPlayer = allPlayers.find(p => p.name === topName);
+    return topPlayer?.id;
+  }, [monthlyLeaderboard, allPlayers]);
+
+  // ── All-time H2H for predictions ──
+  const allTimeH2H = useMemo(() => {
+    if (player1Id === null || player2Id === null) return null;
+    let p1Wins = 0;
+    let p2Wins = 0;
+    for (const f of allFrames) {
+      if (f.winnerId === player1Id && f.loserId === player2Id) p1Wins++;
+      else if (f.winnerId === player2Id && f.loserId === player1Id) p2Wins++;
+    }
+    return { p1Wins, p2Wins, total: p1Wins + p2Wins };
+  }, [allFrames, player1Id, player2Id]);
+
+  // ── Achievement toast helper ──
+  const showAchievementToast = useCallback((ach: Achievement, name: string) => {
+    clearTimeout(achievementTimer.current);
+    setNewAchievement({ achievement: ach, playerName: name });
+    achievementTimer.current = setTimeout(() => setNewAchievement(null), 3000);
+  }, []);
+
   // ── Handlers ──
 
-  const showFeedback = (msg: string) => {
-    setFeedback(msg);
-    setTimeout(() => setFeedback(null), 1500);
+  const showFeedback = (msg: string, type: 'win' | 'streak' | 'info' = 'info') => {
+    clearTimeout(feedbackTimer.current);
+    setFeedback({ msg, type });
+    feedbackTimer.current = setTimeout(() => setFeedback(null), type === 'streak' ? 2500 : 1500);
   };
 
   const handleStartSession = async () => {
@@ -258,8 +297,8 @@ export default function HomePage() {
     setView('session');
     updateOverlay({
       visible: true,
-      playerA: { id: String(first), name: playerName(first), score: 0 },
-      playerB: { id: String(second), name: playerName(second), score: 0 },
+      playerA: { id: String(first), name: playerName(first), emoji: playerEmoji(first), score: 0 },
+      playerB: { id: String(second), name: playerName(second), emoji: playerEmoji(second), score: 0 },
       sessionDate: new Date().toISOString().slice(0, 10),
       frameNumber: 1,
       lastWinnerId: null,
@@ -306,8 +345,8 @@ export default function HomePage() {
     const p2h2h = sessionFrames.filter(f => f.winnerId === id && f.loserId === player1Id).length;
     updateOverlay({
       visible: true,
-      playerA: { id: String(player1Id!), name: playerName(player1Id!), score: p1h2h },
-      playerB: { id: String(id), name: playerName(id), score: p2h2h },
+      playerA: { id: String(player1Id!), name: playerName(player1Id!), emoji: playerEmoji(player1Id!), score: p1h2h },
+      playerB: { id: String(id), name: playerName(id), emoji: playerEmoji(id), score: p2h2h },
       frameNumber: sessionFrames.length + 1,
       lastWinnerId: null,
     });
@@ -358,14 +397,36 @@ export default function HomePage() {
 
     updateOverlay({
       visible: true,
-      playerA: { id: String(nextP1Id), name: playerName(nextP1Id), score: nextP1Score },
-      playerB: { id: String(nextP2Id), name: playerName(nextP2Id), score: nextP2Score },
+      playerA: { id: String(nextP1Id), name: playerName(nextP1Id), emoji: playerEmoji(nextP1Id), score: nextP1Score },
+      playerB: { id: String(nextP2Id), name: playerName(nextP2Id), emoji: playerEmoji(nextP2Id), score: nextP2Score },
       frameNumber: sessionFrames.length + 2, // +1 for current frame, +1 for next
       lastWinnerId: String(winnerId),
     });
 
     // Optimistic UI update — move players immediately, write to DB in background
-    showFeedback(`${playerName(winnerId)} wins!`);
+    // Compute streak on optimistic frames
+    const optimisticFrames: Frame[] = [...sessionFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date() } as Frame];
+    const streak = getWinStreak(optimisticFrames, winnerId);
+    const streakMsg = getStreakMessage(streak);
+
+    if (streakMsg) {
+      showFeedback(`${playerName(winnerId)} wins! ${streakMsg}`, 'streak');
+      playStreakSound(streak);
+    } else {
+      showFeedback(`${playerName(winnerId)} wins!`, 'win');
+      playWinSound();
+    }
+
+    // Check session-scoped achievements
+    const optimisticAllFrames = [...allFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date() } as Frame];
+    const newAchs = checkAndUnlock(winnerId, optimisticAllFrames, [], optimisticFrames, monthlyTopId);
+    if (newAchs.length > 0) {
+      // Show after win toast finishes (match its duration)
+      const winToastDuration = streakMsg ? 2500 : 1500;
+      const winnerName = playerName(winnerId);
+      setTimeout(() => showAchievementToast(newAchs[0], winnerName), winToastDuration + 200);
+    }
+
     if (challengerQueue.length > 0) {
       const [nextChallenger, ...restOfQueue] = challengerQueue;
       setPlayer1Id(winnerId);
@@ -401,7 +462,7 @@ export default function HomePage() {
     // Add them to the back of the challenger queue
     setChallengerQueue(prev => [...prev, playerId]);
     setShowAddPlayer(false);
-    showFeedback(`${playerName(playerId)} joined!`);
+    showFeedback(`${playerName(playerId)} joined!`, 'info');
     refresh();
   };
 
@@ -417,7 +478,7 @@ export default function HomePage() {
       }
     }
     setConfirmUndo(false);
-    showFeedback('Last frame removed');
+    showFeedback('Last frame removed', 'info');
     refresh();
   };
 
@@ -437,6 +498,13 @@ export default function HomePage() {
     const pIds = activeSession.playerIds;
     const sessionPlayers = allPlayers.filter(p => p.id !== undefined && pIds.includes(p.id));
     await endSession(activeSession.id);
+    playSessionEndFanfare();
+
+    // Check global achievements for all session players
+    for (const pid of pIds) {
+      checkAndUnlock(pid, allFrames, [], frames, monthlyTopId);
+    }
+
     clearMatchState();
     setSummaryData({ frames, session: session as Session, players: sessionPlayers });
     setConfirmEnd(false);
@@ -487,7 +555,7 @@ export default function HomePage() {
                   <div key={entry.name} className="flex items-center justify-between px-2 py-1 xl:px-4 xl:py-3">
                     <div className="flex items-center gap-3 xl:gap-5">
                       <span className={`text-lg xl:text-3xl 2xl:text-4xl font-bold w-6 xl:w-12 text-center score-num ${medal}`}>{i + 1}</span>
-                      <span className="text-chalk text-lg xl:text-2xl 2xl:text-3xl chalk-text">{entry.name}</span>
+                      <span className="text-chalk text-lg xl:text-2xl 2xl:text-3xl chalk-text">{entry.emoji ? `${entry.emoji} ` : ''}{entry.name}</span>
                     </div>
                     <div className="flex items-center gap-2 xl:gap-4 text-lg xl:text-2xl 2xl:text-3xl">
                       <span className="text-win font-semibold score-num">{entry.won}W</span>
@@ -544,6 +612,7 @@ export default function HomePage() {
                         {order}
                       </span>
                     )}
+                    {p.emoji && <span className="text-2xl xl:text-4xl">{p.emoji}</span>}
                     {p.name}
                   </button>
                 );
@@ -643,8 +712,25 @@ export default function HomePage() {
       `}</style>
       {/* Feedback toast */}
       {feedback && (
-        <div className="fixed top-4 xl:top-8 left-1/2 -translate-x-1/2 bg-win text-board-dark font-bold text-xl xl:text-3xl 2xl:text-4xl px-8 xl:px-14 py-4 xl:py-6 rounded-xl shadow-lg z-50">
-          {feedback}
+        <div className={`fixed top-4 xl:top-8 left-1/2 -translate-x-1/2 font-bold text-xl xl:text-3xl 2xl:text-4xl px-8 xl:px-14 py-4 xl:py-6 rounded-xl shadow-lg z-50 ${
+          feedback.type === 'streak'
+            ? 'bg-gold text-board-dark streak-toast'
+            : feedback.type === 'win'
+              ? 'bg-win text-board-dark toast-enter'
+              : 'bg-win text-board-dark toast-enter'
+        }`}>
+          {feedback.msg}
+        </div>
+      )}
+
+      {/* Achievement toast */}
+      {newAchievement && (
+        <div className="fixed top-4 xl:top-8 left-1/2 -translate-x-1/2 bg-gold text-board-dark font-bold text-lg xl:text-2xl px-6 xl:px-10 py-3 xl:py-5 rounded-xl shadow-lg z-50 badge-enter flex items-center gap-3">
+          <span className="text-2xl xl:text-4xl">{newAchievement.achievement.icon}</span>
+          <div className="flex flex-col leading-tight">
+            <span>{newAchievement.playerName}: {newAchievement.achievement.name}</span>
+            <span className="text-sm xl:text-base font-semibold opacity-80">Achievement unlocked!</span>
+          </div>
         </div>
       )}
 
@@ -668,7 +754,7 @@ export default function HomePage() {
 
         <div className="text-chalk-dim text-sm xl:text-xl 2xl:text-2xl text-right ml-auto">
           <span>Players: <span className="text-chalk font-bold score-num">{activeSession?.playerIds.length ?? 0}</span></span>
-          <span className="ml-3 xl:ml-6">Frames: <span className="text-chalk font-bold score-num">{totalFrames}</span></span>
+          <span className="ml-3 xl:ml-6">Frames: <AnimatedNumber value={totalFrames} className="text-chalk font-bold score-num" /></span>
         </div>
       </div>
 
@@ -684,8 +770,9 @@ export default function HomePage() {
                 <button
                   key={pid}
                   onClick={() => handleSelectPlayer1(pid)}
-                  className="btn-press w-full min-h-[72px] xl:min-h-[120px] py-4 xl:py-8 px-6 xl:px-10 panel text-[28px] xl:text-[48px] 2xl:text-[60px] font-bold text-chalk"
+                  className="btn-press w-full min-h-[72px] xl:min-h-[120px] py-4 xl:py-8 px-6 xl:px-10 panel text-[28px] xl:text-[48px] 2xl:text-[60px] font-bold text-chalk flex items-center justify-center gap-3 xl:gap-5"
                 >
+                  {playerEmoji(pid) && <span>{playerEmoji(pid)}</span>}
                   {playerName(pid)}
                 </button>
               ))}
@@ -696,7 +783,7 @@ export default function HomePage() {
         {/* Selecting Player 2 */}
         {matchStep === 'pickPlayer2' && player1Id !== null && (
           <div className="w-full max-w-lg xl:max-w-3xl 2xl:max-w-5xl flex flex-col items-center gap-4 xl:gap-6">
-            <p className="text-gold text-2xl xl:text-5xl 2xl:text-6xl font-bold glow-gold">{playerName(player1Id)}</p>
+            <p className="text-gold text-2xl xl:text-5xl 2xl:text-6xl font-bold glow-gold">{playerEmoji(player1Id) ? `${playerEmoji(player1Id)} ` : ''}{playerName(player1Id)}</p>
             <p className="text-chalk-dim text-xl xl:text-3xl uppercase tracking-widest font-display">v</p>
             <p className="text-chalk-dim text-xl xl:text-3xl 2xl:text-4xl uppercase tracking-widest font-display">Select Player 2</p>
             <div className="w-full flex flex-col gap-3 xl:gap-5">
@@ -706,8 +793,9 @@ export default function HomePage() {
                   <button
                     key={pid}
                     onClick={() => handleSelectPlayer2(pid)}
-                    className="btn-press w-full min-h-[72px] xl:min-h-[120px] py-4 xl:py-8 px-6 xl:px-10 panel text-[28px] xl:text-[48px] 2xl:text-[60px] font-bold text-chalk"
+                    className="btn-press w-full min-h-[72px] xl:min-h-[120px] py-4 xl:py-8 px-6 xl:px-10 panel text-[28px] xl:text-[48px] 2xl:text-[60px] font-bold text-chalk flex items-center justify-center gap-3 xl:gap-5"
                   >
+                    {playerEmoji(pid) && <span>{playerEmoji(pid)}</span>}
                     {playerName(pid)}
                   </button>
                 ))}
@@ -726,6 +814,19 @@ export default function HomePage() {
           <div className="w-full flex flex-col items-center gap-2 xl:gap-4">
             <p className="font-display text-gold text-lg xl:text-[48px] 2xl:text-[60px] font-bold uppercase tracking-[0.3em] glow-gold">Game On</p>
 
+            {/* Prediction */}
+            {allTimeH2H && (
+              <p className="text-chalk-dim text-sm xl:text-lg 2xl:text-xl italic">
+                {allTimeH2H.total === 0
+                  ? 'First time matchup!'
+                  : allTimeH2H.p1Wins === allTimeH2H.p2Wins
+                    ? `Dead even! (${allTimeH2H.p1Wins}-${allTimeH2H.p2Wins} all time)`
+                    : allTimeH2H.p1Wins > allTimeH2H.p2Wins
+                      ? `${playerName(player1Id!)} wins ${Math.round((allTimeH2H.p1Wins / allTimeH2H.total) * 100)}% of the time (${allTimeH2H.p1Wins}-${allTimeH2H.p2Wins} all time)`
+                      : `${playerName(player2Id!)} wins ${Math.round((allTimeH2H.p2Wins / allTimeH2H.total) * 100)}% of the time (${allTimeH2H.p2Wins}-${allTimeH2H.p1Wins} all time)`}
+              </p>
+            )}
+
             {/* Tap the winner */}
             <p className="text-chalk-dim text-sm xl:text-xl 2xl:text-2xl uppercase tracking-widest mb-2 xl:mb-4">Tap the winner</p>
 
@@ -735,6 +836,9 @@ export default function HomePage() {
                 onClick={() => handleRecordWinner(player1Id)}
                 className="btn-press flex-1 max-w-[45%] py-8 xl:py-14 2xl:py-18 panel !border-2 !border-board-light active:!border-win"
               >
+                {playerEmoji(player1Id) && (
+                  <span className="text-[clamp(32px,6vw,80px)] block text-center mb-1">{playerEmoji(player1Id)}</span>
+                )}
                 <span className="text-[clamp(28px,5vw,100px)] font-black text-chalk chalk-text block text-center leading-tight">
                   {playerName(player1Id)}
                 </span>
@@ -747,6 +851,9 @@ export default function HomePage() {
                 onClick={() => handleRecordWinner(player2Id)}
                 className="btn-press flex-1 max-w-[45%] py-8 xl:py-14 2xl:py-18 panel !border-2 !border-board-light active:!border-win"
               >
+                {playerEmoji(player2Id) && (
+                  <span className="text-[clamp(32px,6vw,80px)] block text-center mb-1">{playerEmoji(player2Id)}</span>
+                )}
                 <span className="text-[clamp(28px,5vw,100px)] font-black text-chalk chalk-text block text-center leading-tight">
                   {playerName(player2Id)}
                 </span>
@@ -773,7 +880,7 @@ export default function HomePage() {
                 <span className="text-chalk-dim text-base xl:text-xl 2xl:text-2xl uppercase tracking-wider font-display">Next up:</span>
                 {challengerQueue.map((pid, i) => (
                   <span key={pid} className={`text-base xl:text-xl 2xl:text-2xl font-semibold ${i === 0 ? 'text-gold glow-gold' : 'text-chalk-dim'}`}>
-                    {playerName(pid)}{i < challengerQueue.length - 1 ? ',' : ''}
+                    {playerEmoji(pid) ? `${playerEmoji(pid)} ` : ''}{playerName(pid)}{i < challengerQueue.length - 1 ? ',' : ''}
                   </span>
                 ))}
               </div>
@@ -843,8 +950,9 @@ export default function HomePage() {
                   <button
                     key={p.id}
                     onClick={() => handleAddPlayerToSession(p.id!)}
-                    className="btn-press py-3 xl:py-5 px-5 xl:px-8 panel text-chalk text-lg xl:text-2xl font-semibold min-h-[48px] xl:min-h-[72px]"
+                    className="btn-press py-3 xl:py-5 px-5 xl:px-8 panel text-chalk text-lg xl:text-2xl font-semibold min-h-[48px] xl:min-h-[72px] flex items-center gap-2"
                   >
+                    {p.emoji && <span>{p.emoji}</span>}
                     {p.name}
                   </button>
                 ))}
@@ -859,8 +967,9 @@ export default function HomePage() {
           <div className="flex items-center gap-4 xl:gap-8 flex-wrap">
             {runningTotals.map(p => (
               <div key={p.id} className="flex items-center gap-1.5 xl:gap-3">
+                {playerEmoji(p.id) && <span className="text-base xl:text-xl">{playerEmoji(p.id)}</span>}
                 <span className="text-chalk font-semibold text-base xl:text-xl 2xl:text-2xl truncate chalk-text">{p.name}</span>
-                <span className="text-gold font-black text-xl xl:text-3xl 2xl:text-4xl score-num">{p.frames}</span>
+                <AnimatedNumber value={p.frames} className="text-gold font-black text-xl xl:text-3xl 2xl:text-4xl score-num" />
               </div>
             ))}
           </div>
@@ -903,6 +1012,14 @@ export default function HomePage() {
                 + Player
               </button>
             )}
+
+            <button
+              onClick={() => { const next = !soundOn; setSoundOn(next); setSoundEnabled(next); }}
+              className="btn-press py-2 xl:py-3 px-3 xl:px-5 panel text-chalk-dim text-sm xl:text-lg font-semibold min-h-[40px] xl:min-h-[56px]"
+              title={soundOn ? 'Mute sounds' : 'Unmute sounds'}
+            >
+              {soundOn ? '\uD83D\uDD0A' : '\uD83D\uDD07'}
+            </button>
 
             {/* Auto-Record checkbox */}
             <button

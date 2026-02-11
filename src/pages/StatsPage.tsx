@@ -9,8 +9,10 @@ import {
   type PlayerStats,
   type LeaderboardEntry,
 } from '../db/services';
+import { ACHIEVEMENTS, getUnlockedForPlayer, checkAndUnlock, loadAchievementsCache, isCacheLoaded } from '../utils/achievements';
 
 type MainTab = 'player' | 'leaderboard';
+type StatsSubTab = 'overview' | 'h2h' | 'achievements';
 type TimePeriod = 'month' | 'year' | 'alltime';
 
 function getMonthRange(year: number, month: number): { start: Date; end: Date } {
@@ -31,7 +33,7 @@ const MONTH_NAMES = [
 ];
 
 export default function StatsPage() {
-  const [mainTab, setMainTab] = useState<MainTab>('player');
+  const [mainTab, setMainTab] = useState<MainTab>('leaderboard');
   const [players, setPlayers] = useState<Player[]>([]);
   const [allFrames, setAllFrames] = useState<Frame[]>([]);
   const [allSessions, setAllSessions] = useState<Session[]>([]);
@@ -158,6 +160,8 @@ export default function StatsPage() {
           stats={playerStats}
           playerMap={playerMap}
           currentForm={currentForm}
+          allFrames={allFrames}
+          allSessions={allSessions}
         />
       )}
 
@@ -186,6 +190,8 @@ function PlayerStatsView({
   stats,
   playerMap,
   currentForm,
+  allFrames,
+  allSessions,
 }: {
   players: Player[];
   selectedPlayerId: number | null;
@@ -193,7 +199,37 @@ function PlayerStatsView({
   stats: PlayerStats | null;
   playerMap: Record<number, string>;
   currentForm: { sessionId: number; date: string; wins: number; losses: number }[];
+  allFrames: Frame[];
+  allSessions: Session[];
 }) {
+  const [subTab, setSubTab] = useState<StatsSubTab>('overview');
+  const [achCacheReady, setAchCacheReady] = useState(isCacheLoaded());
+
+  // Ensure achievements cache is loaded from DB
+  useEffect(() => {
+    if (!achCacheReady) {
+      loadAchievementsCache().then(() => setAchCacheReady(true));
+    }
+  }, [achCacheReady]);
+
+  // Run global achievement checks when player is selected
+  useEffect(() => {
+    if (achCacheReady && selectedPlayerId !== null && allFrames.length > 0) {
+      checkAndUnlock(selectedPlayerId, allFrames, allSessions);
+    }
+  }, [achCacheReady, selectedPlayerId, allFrames, allSessions]);
+
+  const unlockedIds = useMemo(() => {
+    if (!achCacheReady || selectedPlayerId === null) return new Set<string>();
+    return new Set(getUnlockedForPlayer(selectedPlayerId).map(u => u.id));
+  }, [achCacheReady, selectedPlayerId, allFrames]); // re-derive when frames change
+
+  const unlockedCount = useMemo(() => {
+    let c = 0;
+    for (const ach of ACHIEVEMENTS) { if (unlockedIds.has(ach.id)) c++; }
+    return c;
+  }, [unlockedIds]);
+
   if (players.length === 0) {
     return (
       <div className="text-center text-chalk-dim py-12 text-xl xl:text-3xl">
@@ -219,88 +255,143 @@ function PlayerStatsView({
 
       {stats && (
         <>
-          {/* Overall record */}
-          <div className="panel p-5 xl:p-8">
-            <h3 className="text-chalk-dim text-base xl:text-xl font-semibold mb-3 xl:mb-5 uppercase tracking-wider">
-              Overall Record
-            </h3>
-            <div className="grid grid-cols-3 gap-3 xl:gap-6 text-center">
-              <StatBox label="Won" value={stats.framesWon} color="text-win" />
-              <StatBox label="Lost" value={stats.framesLost} color="text-loss" />
-              <StatBox label="Win %" value={`${stats.winPercentage}%`} color="text-chalk" />
-            </div>
+          {/* Sub-tabs */}
+          <div className="flex gap-2 xl:gap-3">
+            {([
+              { key: 'overview' as const, label: 'Overview' },
+              { key: 'h2h' as const, label: 'Head to Head' },
+              { key: 'achievements' as const, label: `Badges (${unlockedCount}/${ACHIEVEMENTS.length})` },
+            ]).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setSubTab(key)}
+                className={`btn-press flex-1 py-3 xl:py-4 rounded-xl font-bold transition-colors min-h-12 xl:min-h-16 text-sm xl:text-xl ${
+                  subTab === key
+                    ? 'panel text-gold !border-gold/30'
+                    : 'bg-board-dark text-chalk-dim border border-board-light/30'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
-          {/* Sessions & best session */}
-          <div className="panel p-5 xl:p-8">
-            <h3 className="text-chalk-dim text-base xl:text-xl font-semibold mb-3 xl:mb-5 uppercase tracking-wider">
-              Sessions
-            </h3>
-            <div className="grid grid-cols-2 gap-3 xl:gap-6 text-center">
-              <StatBox label="Played" value={stats.sessionsPlayed} color="text-chalk" />
-              <StatBox
-                label="Best Session"
-                value={stats.bestSession ? `${stats.bestSession.wins} wins` : '--'}
-                color="text-gold"
-              />
-            </div>
-          </div>
-
-          {/* Current form */}
-          {currentForm.length > 0 && (
-            <div className="panel p-5 xl:p-8">
-              <h3 className="text-chalk-dim text-base xl:text-xl font-semibold mb-3 xl:mb-5 uppercase tracking-wider">
-                Current Form (Last 5 Sessions)
-              </h3>
-              <div className="flex flex-col gap-2 xl:gap-4">
-                {currentForm.map((s) => (
-                  <div
-                    key={s.sessionId}
-                    className="flex items-center justify-between bg-board-dark/50 rounded-lg px-4 py-3 xl:px-6 xl:py-5 border border-board-light/20"
-                  >
-                    <span className="text-chalk-dim text-sm xl:text-lg">{s.date}</span>
-                    <div className="flex gap-3 xl:gap-5">
-                      <span className="text-win font-bold text-lg xl:text-2xl 2xl:text-3xl score-num">
-                        {s.wins}W
-                      </span>
-                      <span className="text-loss font-bold text-lg xl:text-2xl 2xl:text-3xl score-num">
-                        {s.losses}L
-                      </span>
-                    </div>
-                  </div>
-                ))}
+          {/* Overview tab */}
+          {subTab === 'overview' && (
+            <>
+              <div className="panel p-5 xl:p-8">
+                <h3 className="text-chalk-dim text-base xl:text-xl font-semibold mb-3 xl:mb-5 uppercase tracking-wider">
+                  Overall Record
+                </h3>
+                <div className="grid grid-cols-3 gap-3 xl:gap-6 text-center">
+                  <StatBox label="Won" value={stats.framesWon} color="text-win" />
+                  <StatBox label="Lost" value={stats.framesLost} color="text-loss" />
+                  <StatBox label="Win %" value={`${stats.winPercentage}%`} color="text-chalk" />
+                </div>
               </div>
-            </div>
-          )}
 
-          {/* Head-to-head */}
-          {Object.keys(stats.headToHead).length > 0 && (
-            <div className="panel p-5 xl:p-8">
-              <h3 className="text-chalk-dim text-base xl:text-xl font-semibold mb-3 xl:mb-5 uppercase tracking-wider">
-                Head to Head
-              </h3>
-              <div className="flex flex-col gap-2 xl:gap-4">
-                {Object.entries(stats.headToHead)
-                  .sort(([, a], [, b]) => (b.won + b.lost) - (a.won + a.lost))
-                  .map(([opponentId, record]) => {
-                    const total = record.won + record.lost;
-                    const winPct = total > 0 ? Math.round((record.won / total) * 100) : 0;
-                    return (
+              <div className="panel p-5 xl:p-8">
+                <h3 className="text-chalk-dim text-base xl:text-xl font-semibold mb-3 xl:mb-5 uppercase tracking-wider">
+                  Sessions
+                </h3>
+                <div className="grid grid-cols-2 gap-3 xl:gap-6 text-center">
+                  <StatBox label="Played" value={stats.sessionsPlayed} color="text-chalk" />
+                  <StatBox
+                    label="Best Session"
+                    value={stats.bestSession ? `${stats.bestSession.wins} wins` : '--'}
+                    color="text-gold"
+                  />
+                </div>
+              </div>
+
+              {currentForm.length > 0 && (
+                <div className="panel p-5 xl:p-8">
+                  <h3 className="text-chalk-dim text-base xl:text-xl font-semibold mb-3 xl:mb-5 uppercase tracking-wider">
+                    Current Form (Last 5 Sessions)
+                  </h3>
+                  <div className="flex flex-col gap-2 xl:gap-4">
+                    {currentForm.map((s) => (
                       <div
-                        key={opponentId}
+                        key={s.sessionId}
                         className="flex items-center justify-between bg-board-dark/50 rounded-lg px-4 py-3 xl:px-6 xl:py-5 border border-board-light/20"
                       >
-                        <span className="text-chalk font-semibold truncate mr-3 text-lg xl:text-2xl">
-                          {playerMap[Number(opponentId)] ?? `Player ${opponentId}`}
-                        </span>
-                        <div className="flex items-center gap-3 xl:gap-5 shrink-0">
-                          <span className="text-win font-bold score-num xl:text-2xl">{record.won}W</span>
-                          <span className="text-loss font-bold score-num xl:text-2xl">{record.lost}L</span>
-                          <span className="text-chalk-dim text-sm xl:text-lg">({winPct}%)</span>
+                        <span className="text-chalk-dim text-sm xl:text-lg">{s.date}</span>
+                        <div className="flex gap-3 xl:gap-5">
+                          <span className="text-win font-bold text-lg xl:text-2xl 2xl:text-3xl score-num">
+                            {s.wins}W
+                          </span>
+                          <span className="text-loss font-bold text-lg xl:text-2xl 2xl:text-3xl score-num">
+                            {s.losses}L
+                          </span>
                         </div>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Head to Head tab */}
+          {subTab === 'h2h' && (
+            Object.keys(stats.headToHead).length > 0 ? (
+              <div className="panel p-5 xl:p-8">
+                <div className="flex flex-col gap-2 xl:gap-4">
+                  {Object.entries(stats.headToHead)
+                    .sort(([, a], [, b]) => (b.won + b.lost) - (a.won + a.lost))
+                    .map(([opponentId, record]) => {
+                      const total = record.won + record.lost;
+                      const winPct = total > 0 ? Math.round((record.won / total) * 100) : 0;
+                      return (
+                        <div
+                          key={opponentId}
+                          className="flex items-center justify-between bg-board-dark/50 rounded-lg px-4 py-3 xl:px-6 xl:py-5 border border-board-light/20"
+                        >
+                          <span className="text-chalk font-semibold truncate mr-3 text-lg xl:text-2xl">
+                            {playerMap[Number(opponentId)] ?? `Player ${opponentId}`}
+                          </span>
+                          <div className="flex items-center gap-3 xl:gap-5 shrink-0">
+                            <span className="text-win font-bold score-num xl:text-2xl">{record.won}W</span>
+                            <span className="text-loss font-bold score-num xl:text-2xl">{record.lost}L</span>
+                            <span className="text-chalk-dim text-sm xl:text-lg">({winPct}%)</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center text-chalk-dim py-12 text-xl xl:text-3xl">
+                No head-to-head data yet.
+              </div>
+            )
+          )}
+
+          {/* Achievements tab */}
+          {subTab === 'achievements' && (
+            <div className="panel p-5 xl:p-8">
+              <div className="grid grid-cols-3 gap-3 xl:gap-4">
+                {ACHIEVEMENTS.map((ach) => {
+                  const unlocked = unlockedIds.has(ach.id);
+                  return (
+                    <div
+                      key={ach.id}
+                      className={`flex flex-col items-center text-center p-3 xl:p-4 rounded-xl border-2 transition-all ${
+                        unlocked
+                          ? 'border-gold/40 bg-gold/10'
+                          : 'border-board-light/20 bg-board-dark/30 opacity-40'
+                      }`}
+                    >
+                      <span className="text-2xl xl:text-4xl mb-1">{ach.icon}</span>
+                      <span className={`text-xs xl:text-sm font-bold leading-tight ${unlocked ? 'text-gold' : 'text-chalk-dim'}`}>
+                        {ach.name}
+                      </span>
+                      <span className="text-[10px] xl:text-xs text-chalk-dim mt-0.5 leading-tight">
+                        {ach.description}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -398,7 +489,16 @@ function LeaderboardView({
           No frames recorded for this period.
         </div>
       ) : (
-        <div className="flex flex-col gap-2 xl:gap-5">
+        <div className="panel overflow-hidden">
+          {/* Table header */}
+          <div className="flex items-center px-4 py-2 xl:px-6 xl:py-3 border-b border-board-light/20 text-chalk-dim text-xs xl:text-base uppercase tracking-wider font-semibold">
+            <span className="w-8 xl:w-12 text-center shrink-0">#</span>
+            <span className="flex-1 ml-2 xl:ml-4">Player</span>
+            <span className="w-14 xl:w-20 text-center shrink-0">W</span>
+            <span className="w-14 xl:w-20 text-center shrink-0">L</span>
+            <span className="w-14 xl:w-20 text-center shrink-0">%</span>
+          </div>
+          {/* Rows */}
           {leaderboard.map((entry, idx) => {
             const rank = idx + 1;
             const isChampion = rank === 1;
@@ -414,55 +514,23 @@ function LeaderboardView({
             return (
               <div
                 key={entry.playerId}
-                className={`panel p-4 xl:p-8 ${isChampion ? '!border-gold/30' : ''}`}
+                className={`flex items-center px-4 py-3 xl:px-6 xl:py-4 border-b border-board-light/10 last:border-b-0 ${isChampion ? 'bg-gold/5' : ''}`}
               >
-                <div className="flex items-center justify-between mb-2 xl:mb-4">
-                  <div className="flex items-center gap-3 xl:gap-5">
-                    <span
-                      className={`font-black score-num text-[36px] xl:text-[56px] 2xl:text-[72px] leading-none ${rankColor} ${isChampion ? 'glow-gold' : ''}`}
-                    >
-                      #{rank}
-                    </span>
-                    <div className="flex flex-col">
-                      <span
-                        className={`text-chalk font-bold text-[28px] xl:text-[44px] 2xl:text-[56px] leading-tight ${isChampion ? 'glow-gold' : ''}`}
-                      >
-                        {entry.playerName}
-                      </span>
-                      {isChampion && (
-                        <span className="text-gold text-sm xl:text-xl font-bold uppercase tracking-wider font-display">
-                          Champion
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-4 xl:gap-8 mt-2 xl:mt-4">
-                  <div className="flex flex-col items-center flex-1">
-                    <span className="text-win font-black score-num text-[36px] xl:text-[56px] 2xl:text-[72px] leading-none">
-                      {entry.framesWon}
-                    </span>
-                    <span className="text-chalk-dim text-xs xl:text-base uppercase">Won</span>
-                  </div>
-                  <div className="flex flex-col items-center flex-1">
-                    <span className="text-loss font-black score-num text-[36px] xl:text-[56px] 2xl:text-[72px] leading-none">
-                      {entry.framesLost}
-                    </span>
-                    <span className="text-chalk-dim text-xs xl:text-base uppercase">Lost</span>
-                  </div>
-                  <div className="flex flex-col items-center flex-1">
-                    <span className="text-chalk font-black score-num text-[36px] xl:text-[56px] 2xl:text-[72px] leading-none">
-                      {entry.winPercentage}%
-                    </span>
-                    <span className="text-chalk-dim text-xs xl:text-base uppercase">Win %</span>
-                  </div>
-                  <div className="flex flex-col items-center flex-1">
-                    <span className="text-chalk font-black score-num text-[36px] xl:text-[56px] 2xl:text-[72px] leading-none">
-                      {entry.sessionsAttended}
-                    </span>
-                    <span className="text-chalk-dim text-xs xl:text-base uppercase">Sessions</span>
-                  </div>
-                </div>
+                <span className={`w-8 xl:w-12 text-center shrink-0 font-black score-num text-xl xl:text-3xl 2xl:text-4xl ${rankColor} ${isChampion ? 'glow-gold' : ''}`}>
+                  {rank}
+                </span>
+                <span className={`flex-1 ml-2 xl:ml-4 text-chalk font-bold text-lg xl:text-2xl 2xl:text-3xl truncate chalk-text ${isChampion ? 'glow-gold' : ''}`}>
+                  {entry.playerName}
+                </span>
+                <span className="w-14 xl:w-20 text-center shrink-0 text-win font-black score-num text-xl xl:text-3xl 2xl:text-4xl">
+                  {entry.framesWon}
+                </span>
+                <span className="w-14 xl:w-20 text-center shrink-0 text-loss font-black score-num text-xl xl:text-3xl 2xl:text-4xl">
+                  {entry.framesLost}
+                </span>
+                <span className="w-14 xl:w-20 text-center shrink-0 text-chalk font-bold score-num text-lg xl:text-2xl 2xl:text-3xl">
+                  {entry.winPercentage}
+                </span>
               </div>
             );
           })}
