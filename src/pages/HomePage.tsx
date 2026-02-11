@@ -148,9 +148,6 @@ export default function HomePage() {
         }
 
         pipStreamRef.current = stream;
-        if (pipVideoRef.current) {
-          pipVideoRef.current.srcObject = stream;
-        }
         setPipReady(true);
       } catch {
         // Virtual camera not available — PiP just won't show
@@ -168,6 +165,13 @@ export default function HomePage() {
       setPipReady(false);
     };
   }, [recordingEnabled, obsStatus.connected]);
+
+  // Attach stream to video element once both are ready
+  useEffect(() => {
+    if (pipReady && pipVideoRef.current && pipStreamRef.current) {
+      pipVideoRef.current.srcObject = pipStreamRef.current;
+    }
+  }, [pipReady]);
 
   // Summary data
   const [summaryData, setSummaryData] = useState<{
