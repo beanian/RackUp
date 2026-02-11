@@ -118,6 +118,8 @@ export default function CameraPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
+      localStorage.setItem('rackup-recording-enabled', 'true');
+      window.dispatchEvent(new CustomEvent('rackup-recording-changed', { detail: true }));
     } catch {
       // polling will update status
     }
@@ -126,6 +128,8 @@ export default function CameraPage() {
   const handleStop = async () => {
     try {
       await fetch('/api/obs/stop-recording', { method: 'POST' });
+      localStorage.setItem('rackup-recording-enabled', 'false');
+      window.dispatchEvent(new CustomEvent('rackup-recording-changed', { detail: false }));
     } catch {
       // polling will update status
     }

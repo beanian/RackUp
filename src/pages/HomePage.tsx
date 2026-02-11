@@ -82,6 +82,16 @@ export default function HomePage() {
   });
   const obsStatus = useObsStatus(recordingEnabled);
 
+  // Sync recording state when changed from Camera page
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const enabled = (e as CustomEvent).detail as boolean;
+      setRecordingEnabled(enabled);
+    };
+    window.addEventListener('rackup-recording-changed', handler);
+    return () => window.removeEventListener('rackup-recording-changed', handler);
+  }, []);
+
   // Persist recording toggle + start/stop OBS if mid-session
   const toggleRecording = useCallback(async () => {
     const next = !recordingEnabled;
