@@ -5,12 +5,14 @@ import PlayersPage from './pages/PlayersPage';
 import HistoryPage from './pages/HistoryPage';
 import SessionDetailPage from './pages/SessionDetailPage';
 import StatsPage from './pages/StatsPage';
+import CameraPage from './pages/CameraPage';
 
 export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<HomePage />} />
+        <Route path="/camera" element={<CameraPage />} />
         <Route path="/players" element={<PlayersPage />} />
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/history/:sessionId" element={<SessionDetailPage />} />

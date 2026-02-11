@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>Rackup Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ── CSS Custom Properties: Broadcast (default) ── */
+  :root {
+    --scorebug-bg: rgba(15, 15, 15, 0.92);
+    --scorebug-centre-bg: rgba(0, 100, 65, 0.95);
+    --scorebug-score-bg: rgba(255, 255, 255, 0.12);
+    --scorebug-text: #FFFFFF;
+    --scorebug-text-dim: rgba(255, 255, 255, 0.6);
+    --scorebug-divider: rgba(255, 255, 255, 0.1);
+    --scorebug-highlight: rgba(74, 222, 128, 0.35);
+    --scorebug-radius: 4px;
+    --scorebug-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+    --scorebug-font: 'Inter', sans-serif;
+    --scorebug-accent: rgba(0, 100, 65, 1);
+  }
+
+  /* ── Chalkboard theme ── */
+  html[data-theme="chalkboard"] {
+    --scorebug-bg: rgba(28, 38, 28, 0.92);
+    --scorebug-centre-bg: rgba(28, 38, 28, 0.95);
+    --scorebug-score-bg: rgba(255, 255, 255, 0.08);
+    --scorebug-text: rgba(230, 225, 210, 1.0);
+    --scorebug-text-dim: rgba(230, 225, 210, 0.5);
+    --scorebug-divider: rgba(230, 225, 210, 0.1);
+    --scorebug-highlight: rgba(200, 180, 100, 0.3);
+    --scorebug-radius: 3px;
+    --scorebug-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    --scorebug-font: 'Barlow Semi Condensed', 'Inter', sans-serif;
+    --scorebug-accent: rgba(160, 140, 80, 1);
+  }
+
+  /* ── Reset & Canvas ── */
+  *, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: transparent;
+    font-family: var(--scorebug-font);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ── Scorebug Container ── */
+  .scorebug {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: stretch;
+    height: 72px;
+    border-radius: var(--scorebug-radius);
+    box-shadow: var(--scorebug-shadow);
+    overflow: hidden;
+    opacity: 1;
+    will-change: transform, opacity;
+    pointer-events: none;
+    /* Thin accent line along the top */
+    border-top: 3px solid var(--scorebug-accent);
+  }
+
+  /* ── Slide animations ── */
+  .scorebug.slide-in {
+    animation: slideIn 400ms ease-out forwards;
+  }
+
+  .scorebug.slide-out {
+    animation: slideOut 300ms ease-in forwards;
+  }
+
+  .scorebug.hidden {
+    transform: translateX(-50%) translateY(150px);
+    opacity: 0;
+  }
+
+  @keyframes slideIn {
+    from {
+      transform: translateX(-50%) translateY(150px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideOut {
+    from {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(-50%) translateY(150px);
+      opacity: 0;
+    }
+  }
+
+  /* ── Player Panels ── */
+  .player-panel {
+    display: flex;
+    align-items: center;
+    background: var(--scorebug-bg);
+    padding: 0 28px;
+    min-width: 220px;
+    transition: background-color 500ms ease;
+  }
+
+  .player-panel.player-a {
+    border-radius: var(--scorebug-radius) 0 0 var(--scorebug-radius);
+    justify-content: center;
+  }
+
+  .player-panel.player-b {
+    border-radius: 0 var(--scorebug-radius) var(--scorebug-radius) 0;
+    justify-content: center;
+  }
+
+  .player-panel.winner-highlight {
+    animation: winnerGlow 600ms ease forwards;
+  }
+
+  @keyframes winnerGlow {
+    0%   { background-color: var(--scorebug-highlight); }
+    100% { background-color: var(--scorebug-bg); }
+  }
+
+  .player-name {
+    font-size: 26px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--scorebug-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 240px;
+    line-height: 72px;
+  }
+
+  /* ── Score Centre ── */
+  .score-centre {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--scorebug-centre-bg);
+    padding: 0 10px;
+    gap: 10px;
+    min-width: 140px;
+  }
+
+  .score-value {
+    font-size: 32px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--scorebug-text);
+    line-height: 44px;
+    min-width: 44px;
+    height: 44px;
+    text-align: center;
+    will-change: transform;
+    background: var(--scorebug-score-bg);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .score-value.pulse {
+    animation: scorePulse 300ms ease;
+  }
+
+  @keyframes scorePulse {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.2); }
+    100% { transform: scale(1); }
+  }
+
+  .score-separator {
+    font-size: 20px;
+    font-weight: 400;
+    color: var(--scorebug-text-dim);
+    line-height: 72px;
+    user-select: none;
+  }
+
+  /* ── REC Indicator ── */
+  .rec-indicator {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease;
+  }
+
+  .rec-indicator.visible {
+    opacity: 1;
+  }
+
+  .rec-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #EF4444;
+    animation: recPulse 1s ease-in-out infinite;
+  }
+
+  @keyframes recPulse {
+    0%   { opacity: 0.6; }
+    50%  { opacity: 1.0; }
+    100% { opacity: 0.6; }
+  }
+
+  .rec-label {
+    font-family: var(--scorebug-font);
+    font-size: 14px;
+    font-weight: 700;
+    color: #EF4444;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<!-- Scorebug -->
+<div class="scorebug hidden" id="scorebug">
+  <div class="player-panel player-a" id="panelA">
+    <span class="player-name" id="nameA"></span>
+  </div>
+  <div class="score-centre">
+    <span class="score-value" id="scoreA">0</span>
+    <span class="score-separator">&ndash;</span>
+    <span class="score-value" id="scoreB">0</span>
+  </div>
+  <div class="player-panel player-b" id="panelB">
+    <span class="player-name" id="nameB"></span>
+  </div>
+</div>
+
+<!-- REC Indicator -->
+<div class="rec-indicator" id="recIndicator">
+  <span class="rec-dot"></span>
+  <span class="rec-label">REC</span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── DOM refs ──
+  const scorebugEl = document.getElementById('scorebug');
+  const nameAEl    = document.getElementById('nameA');
+  const nameBEl    = document.getElementById('nameB');
+  const scoreAEl   = document.getElementById('scoreA');
+  const scoreBEl   = document.getElementById('scoreB');
+  const panelAEl   = document.getElementById('panelA');
+  const panelBEl   = document.getElementById('panelB');
+  const recEl      = document.getElementById('recIndicator');
+
+  // ── Theme from query param ──
+  const params = new URLSearchParams(window.location.search);
+  const theme  = params.get('theme');
+  if (theme === 'chalkboard') {
+    document.documentElement.setAttribute('data-theme', 'chalkboard');
+  }
+
+  // ── State tracking ──
+  let currentState = {
+    visible: false,
+    isRecording: false,
+    playerA: null,
+    playerB: null,
+    lastWinnerId: null,
+    frameNumber: 0,
+    sessionDate: null
+  };
+
+  let isAnimating = false;
+
+  // ── Helpers ──
+
+  function playerId(player) {
+    return player ? player.id : null;
+  }
+
+  function playerName(player) {
+    return player ? player.name : '';
+  }
+
+  function playerScore(player) {
+    return player ? player.score : 0;
+  }
+
+  function samePlayersAs(prev, next) {
+    return playerId(prev.playerA) === playerId(next.playerA)
+        && playerId(prev.playerB) === playerId(next.playerB);
+  }
+
+  // ── Animation utilities ──
+
+  function waitForAnimation(el, className) {
+    return new Promise(function (resolve) {
+      function onEnd() {
+        el.removeEventListener('animationend', onEnd);
+        resolve();
+      }
+      el.addEventListener('animationend', onEnd);
+      // Remove any prior animation classes first
+      el.classList.remove('slide-in', 'slide-out');
+      // Force reflow so the browser picks up the new class
+      void el.offsetWidth;
+      el.classList.add(className);
+    });
+  }
+
+  function delay(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  // ── DOM updates ──
+
+  function setNames(state) {
+    nameAEl.textContent = playerName(state.playerA);
+    nameBEl.textContent = playerName(state.playerB);
+  }
+
+  function setScores(state) {
+    scoreAEl.textContent = String(playerScore(state.playerA));
+    scoreBEl.textContent = String(playerScore(state.playerB));
+  }
+
+  function setRecording(recording) {
+    if (recording) {
+      recEl.classList.add('visible');
+    } else {
+      recEl.classList.remove('visible');
+    }
+  }
+
+  function pulseScore() {
+    scoreAEl.classList.remove('pulse');
+    scoreBEl.classList.remove('pulse');
+    void scoreAEl.offsetWidth;
+    scoreAEl.classList.add('pulse');
+    scoreBEl.classList.add('pulse');
+  }
+
+  function highlightWinner(winnerId) {
+    var panelEl = null;
+    if (currentState.playerA && winnerId === currentState.playerA.id) {
+      panelEl = panelAEl;
+    } else if (currentState.playerB && winnerId === currentState.playerB.id) {
+      panelEl = panelBEl;
+    }
+    if (panelEl) {
+      panelEl.classList.remove('winner-highlight');
+      void panelEl.offsetWidth;
+      panelEl.classList.add('winner-highlight');
+      setTimeout(function () {
+        panelEl.classList.remove('winner-highlight');
+      }, 550);
+    }
+  }
+
+  // ── Slide in / out ──
+
+  async function slideIn() {
+    scorebugEl.classList.remove('hidden', 'slide-out');
+    await waitForAnimation(scorebugEl, 'slide-in');
+  }
+
+  async function slideOut() {
+    scorebugEl.classList.remove('slide-in');
+    await waitForAnimation(scorebugEl, 'slide-out');
+    scorebugEl.classList.add('hidden');
+    scorebugEl.classList.remove('slide-out');
+  }
+
+  // ── Main state handler ──
+
+  async function applyState(newState) {
+    // Prevent overlapping animation sequences
+    if (isAnimating) return;
+
+    var prev = currentState;
+    var playersChanged = !samePlayersAs(prev, newState);
+    var scoreChanged   = !playersChanged
+      && (playerScore(prev.playerA) !== playerScore(newState.playerA)
+       || playerScore(prev.playerB) !== playerScore(newState.playerB));
+    var visibilityChanged = prev.visible !== newState.visible;
+
+    // Update recording indicator immediately
+    if (prev.isRecording !== newState.isRecording) {
+      setRecording(newState.isRecording);
+    }
+
+    // ── Visibility transitions ──
+    if (visibilityChanged && newState.visible) {
+      // Show: update content then slide in
+      isAnimating = true;
+      currentState = newState;
+      setNames(newState);
+      setScores(newState);
+      await slideIn();
+      isAnimating = false;
+
+      if (newState.lastWinnerId && newState.lastWinnerId !== prev.lastWinnerId) {
+        highlightWinner(newState.lastWinnerId);
+      }
+      return;
+    }
+
+    if (visibilityChanged && !newState.visible) {
+      isAnimating = true;
+      await slideOut();
+      currentState = newState;
+      isAnimating = false;
+      return;
+    }
+
+    // From here on, visibility hasn't changed
+    if (!newState.visible) {
+      // Hidden, just store state
+      currentState = newState;
+      return;
+    }
+
+    // ── Players changed while visible ──
+    if (playersChanged) {
+      isAnimating = true;
+      await slideOut();
+      await delay(200);
+      setNames(newState);
+      setScores(newState);
+      currentState = newState;
+      await slideIn();
+      isAnimating = false;
+
+      if (newState.lastWinnerId) {
+        highlightWinner(newState.lastWinnerId);
+      }
+      return;
+    }
+
+    // ── Score changed (same players) ──
+    if (scoreChanged) {
+      currentState = newState;
+      setScores(newState);
+      pulseScore();
+      if (newState.lastWinnerId && newState.lastWinnerId !== prev.lastWinnerId) {
+        highlightWinner(newState.lastWinnerId);
+      }
+      return;
+    }
+
+    // ── Winner highlight only (no score or player change) ──
+    if (newState.lastWinnerId && newState.lastWinnerId !== prev.lastWinnerId) {
+      currentState = newState;
+      highlightWinner(newState.lastWinnerId);
+      return;
+    }
+
+    // ── Fallback: just store ──
+    currentState = newState;
+  }
+
+  // ── API ──
+
+  function getBaseUrl() {
+    // Allow override via ?api= param for development
+    var apiBase = params.get('api');
+    if (apiBase) return apiBase.replace(/\/+$/, '');
+    return '';
+  }
+
+  var baseUrl = getBaseUrl();
+
+  async function fetchInitialState() {
+    try {
+      var resp = await fetch(baseUrl + '/api/overlay/state');
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      var state = await resp.json();
+      await applyState(state);
+    } catch (err) {
+      console.warn('[overlay] Failed to fetch initial state:', err.message);
+    }
+  }
+
+  function connectSSE() {
+    var es = new EventSource(baseUrl + '/api/overlay/events');
+
+    function handleEvent(e) {
+      try {
+        var state = JSON.parse(e.data);
+        applyState(state);
+      } catch (err) {
+        console.warn('[overlay] Failed to parse SSE data:', err.message);
+      }
+    }
+
+    es.addEventListener('match_update', handleEvent);
+    es.addEventListener('score_update', handleEvent);
+    es.addEventListener('visibility', handleEvent);
+    es.addEventListener('recording_status', handleEvent);
+
+    es.onerror = function () {
+      // EventSource auto-reconnects; hold last state (don't blank)
+      console.warn('[overlay] SSE connection error, will auto-reconnect.');
+    };
+  }
+
+  // ── Init ──
+  fetchInitialState().then(function () {
+    connectSSE();
+  });
+})();
+</script>
+</body>
+</html>

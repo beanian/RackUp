@@ -147,15 +147,20 @@ export async function recordFrame(
   sessionId: number,
   winnerId: number,
   loserId: number,
+  videoFilePath?: string,
 ): Promise<number> {
+  const row: Record<string, unknown> = {
+    session_id: sessionId,
+    winner_id: winnerId,
+    loser_id: loserId,
+    recorded_at: new Date().toISOString(),
+  };
+  if (videoFilePath) {
+    row.video_file_path = videoFilePath;
+  }
   const { data, error } = await supabase
     .from('frames')
-    .insert({
-      session_id: sessionId,
-      winner_id: winnerId,
-      loser_id: loserId,
-      recorded_at: new Date().toISOString(),
-    })
+    .insert(row)
     .select('id')
     .single();
   if (error) throw error;

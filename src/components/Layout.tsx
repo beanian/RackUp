@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 
 const navItems = [
   { to: '/', label: 'Home', icon: '⬤' },
+  { to: '/camera', label: 'Camera', icon: '⬤' },
   { to: '/players', label: 'Players', icon: '⬤' },
   { to: '/history', label: 'History', icon: '⬤' },
   { to: '/stats', label: 'Stats', icon: '⬤' },
@@ -19,7 +20,7 @@ export default function Layout() {
         }}
       >
         {/* Main content */}
-        <main className="flex-1 min-h-0 overflow-y-auto p-4 xl:p-8 2xl:p-10">
+        <main className="flex-1 min-h-0 overflow-y-auto px-4 pt-4 xl:px-8 xl:pt-8 2xl:px-10 2xl:pt-10">
           <Outlet />
         </main>
 

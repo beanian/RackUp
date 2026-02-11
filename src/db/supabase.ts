@@ -26,4 +26,5 @@ export interface Frame {
   winnerId: number;
   loserId: number;
   recordedAt: Date;
+  videoFilePath?: string;
 }

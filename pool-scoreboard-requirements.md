@@ -2,7 +2,11 @@
 
 ## Project Overview
 
-RackUp is a touch-friendly digital scoreboard web application designed to replace a physical chalkboard in a home pool room (UK 8-ball pool). The app will be used by an elderly user and his friends during casual pool sessions to track frame results, session scores, and long-term statistics. The app must be extremely simple to operate, visually clear, and run fullscreen in a browser on a wall-mounted touchscreen display.
+RackUp is a touch-friendly digital scoreboard and recording management application designed to replace a physical chalkboard and streamline video recording in a home pool room (UK 8-ball pool). The app will be used by an elderly user and his friends during casual pool sessions to track frame results, session scores, long-term statistics, and manage per-frame video recordings via OBS Studio.
+
+The system runs on a dedicated mini PC connected to a wall-mounted touchscreen display and an overhead webcam. RackUp serves as the central control hub — the touchscreen replaces both the chalkboard and the Elgato Stream Deck currently used to manage OBS. The existing Stream Deck is retained as a fallback/companion input device.
+
+The app must be extremely simple to operate, visually clear, and run fullscreen in a browser on the touchscreen display.
 
 ---
 
@@ -51,7 +55,7 @@ RackUp is a touch-friendly digital scoreboard web application designed to replac
 
 ---
 
-## 3. Frame Recording
+## 3. Frame Recording & Video Capture
 
 ### 3.1 Recording a Frame Result
 - The interaction for recording a frame must be fast and require minimal taps.
@@ -61,12 +65,44 @@ RackUp is a touch-friendly digital scoreboard web application designed to replac
   3. Tap the loser's name from the remaining players.
   4. Frame is recorded. No further confirmation needed.
 - Alternative: A grid/matrix view where players are on both axes and the user taps the cell at the intersection of winner (row) vs loser (column) to record a frame in a single tap.
-- Each frame record stores: session ID, winner, loser, timestamp.
+- Each frame record stores: session ID, winner, loser, timestamp, and a reference to the associated video file (if recording was active).
 
 ### 3.2 Frame Validation
 - A player cannot play against themselves.
 - Both a winner and a loser must be selected.
 - Duplicate consecutive identical results should be allowed (the same two players can play multiple frames in a row).
+
+### 3.3 Video Recording Per Frame (Automatic)
+- Video recording is managed **per frame**, not per session. A session may last 6–8 hours; individual frame recordings are typically 5–30 minutes each.
+- Recording behaviour is controlled by a **"Recording Enabled" toggle** on the home/session screen. This is a prominent, clearly labelled checkbox or switch.
+- **When recording is enabled**, the lifecycle is fully automatic:
+  1. **Recording starts automatically** when the next frame begins — i.e., immediately after the previous frame result is recorded (the user taps the winner of the last frame, that recording stops, and a new recording starts immediately for the next frame).
+  2. **For the very first frame of a session**, recording starts when the session begins (or when the first "Now Playing" matchup is selected).
+  3. The session screen shows a visible **recording indicator** (e.g., a red dot / "REC" badge) so everyone knows the camera is rolling.
+  4. **When the frame ends**: the user taps the winner. RackUp **automatically stops** the current recording and **immediately starts** a new recording for the next frame. This is a single user action (tapping the winner) that triggers both stop and start.
+  5. When the session ends (or recording is toggled off), the current recording is stopped.
+- **When recording is disabled** (toggle unchecked), no OBS commands are sent. Scoring works exactly the same, just without video. Toggling recording off mid-session should cleanly stop any active recording.
+- The user should be able to toggle recording on/off at any point during a session without disrupting the scoring flow.
+- If OBS is unavailable when recording is enabled, show a warning but do not block scoring (see §8.1).
+
+### 3.4 Video File Naming & Metadata
+- Each recorded video file must be automatically named with structured metadata for easy browsing in a file manager.
+- **File naming convention**: `YYYY-MM-DD_HHmm_PlayerA-vs-PlayerB_FrameNNN.mkv`
+  - Example: `2025-08-15_2035_Paddy-vs-Mick_Frame012.mkv`
+  - Date and time of recording start.
+  - Both player names (alphabetical, or winner-vs-loser — to be confirmed).
+  - Frame sequence number within the session.
+- File format: MKV or MP4 (configurable in OBS, MKV recommended for crash resilience — OBS can remux to MP4 afterwards).
+- Recordings are saved to a configurable local directory on the mini PC (e.g., `/recordings/YYYY-MM/`), organised by month.
+- The frame record in RackUp's database stores the full file path to the associated video, enabling future playback or linking from the UI.
+
+### 3.5 OBS Scene & Overlay Integration
+- RackUp should update an OBS text source (via WebSocket) to display the current players and score as an overlay on the recording. This means each video file is self-documenting — anyone watching the recording can see who's playing and the current score without needing to cross-reference.
+- The overlay should show:
+  - Player A name vs Player B name.
+  - Current head-to-head score for this session (e.g., "Paddy 2 – 1 Mick").
+  - Session date.
+- The overlay updates in real time as frames are recorded.
 
 ---
 
@@ -107,27 +143,43 @@ RackUp is a touch-friendly digital scoreboard web application designed to replac
 ### 5.1 General Principles
 - **Touch-first design**: all interactive elements must be large enough for elderly users with reduced dexterity. Minimum touch target size: 48x48px, preferred: 64x64px or larger.
 - **High contrast**: dark background with bright text (chalkboard aesthetic is acceptable and on-brand). Text must be readable from 2–3 metres away for the key information (current scores, player names).
-- **Minimal navigation**: the app should have no more than 3–4 top-level sections (e.g., Home/Session, History, Stats, Players).
+- **Minimal navigation**: the app should have no more than 4–5 top-level sections (e.g., Home/Session, Camera, History, Stats, Players).
 - **No keyboard input during sessions**: player names are pre-configured. The only input during a session is tapping names to record frame results.
 - **Responsive layout**: must work on screens from 20" to 32" in landscape orientation. Primarily designed for landscape.
 - **Fullscreen mode**: the app should support running in kiosk/fullscreen mode with no browser chrome visible.
 
-### 5.2 Home Screen
+### 5.2 Home Screen / Session Screen
 - Shows one of two states:
   - **No active session**: prominent "New Session" button, today's date, quick-glance monthly leaderboard.
   - **Active session**: the live session scoreboard (as described in §2.2), with navigation to History/Stats accessible but unobtrusive.
+- **Recording toggle**: a clearly labelled "Recording Enabled" switch is always visible on the session screen. When checked, automatic per-frame recording is active. When unchecked, no recordings are made. Default state should be configurable in settings.
+- **OBS Preview (Picture-in-Picture)**: a small live preview window showing the current OBS output is displayed in the **bottom-right corner** of the session screen. This gives the players a quick glance of what the camera sees without leaving the scoreboard view. The preview should:
+  - Be unobtrusive — small enough not to interfere with the scoreboard layout (roughly 15–20% of screen width).
+  - Show a live feed from OBS (via the OBS WebSocket virtual cam output, or a browser source rendering the OBS preview).
+  - Be clearly bordered/framed so it's visually distinct from the scoreboard UI.
+  - Show a "REC" indicator overlaid on the preview when recording is active.
+  - Be tappable to navigate to the dedicated Camera tab (see §5.3).
 
-### 5.3 Typography & Readability
+### 5.3 Camera / Live View Tab
+- A dedicated tab in the main navigation that shows a **larger view of the OBS camera feed**.
+- This is the full-width live preview — useful for checking camera angle, framing, lighting, etc. before or during a session.
+- Should display:
+  - The live OBS output (full width, maintaining aspect ratio).
+  - Current recording status (recording / not recording, duration of current recording).
+  - The current overlay information (player names, score) as it would appear on the recording.
+  - Manual "Start Recording" / "Stop Recording" buttons as an override, regardless of the auto-record toggle.
+
+### 5.4 Typography & Readability
 - Player names: large, bold, sans-serif font. Minimum 28px on a 1080p display.
 - Scores/numbers: extra-large, minimum 36px.
 - Secondary information (timestamps, labels): can be smaller but still legible, minimum 18px.
 
-### 5.4 Colour & Theming
+### 5.5 Colour & Theming
 - Default theme: dark (chalkboard-inspired — dark green or dark grey background, white/chalk-coloured text).
 - Optional: allow a simple theme toggle (dark/light) in a settings area.
 - Use colour to distinguish wins (green), losses (red), and neutral info (white/grey).
 
-### 5.5 Animations & Feedback
+### 5.6 Animations & Feedback
 - Tapping a button should provide immediate visual feedback (colour change, brief highlight).
 - Avoid elaborate animations that could slow down interaction or confuse the user.
 - A subtle "frame recorded" confirmation (e.g., a brief flash or checkmark) after recording a frame.
@@ -137,17 +189,28 @@ RackUp is a touch-friendly digital scoreboard web application designed to replac
 ## 6. Data & Storage
 
 ### 6.1 Persistence
-- All data must be stored locally on the device. The app must work fully offline with no internet dependency.
-- Data should survive browser restarts, device reboots, and power losses.
-- **Storage approach**: use a local database (IndexedDB preferred for web apps, or SQLite if using a backend).
+- All data is stored in a SQLite database on the mini PC's local SSD.
+- The database file should be located in a known, backed-up directory (e.g., `~/rackup/data/rackup.db`).
+- All writes are immediately committed. The app must survive power loss without data corruption (SQLite WAL mode recommended).
+- Internet connectivity is not required for any core functionality.
+
+### 6.2 Video File Management
+- Recorded video files are stored in a configurable recordings directory (e.g., `~/rackup/recordings/`).
+- Files are organised into subdirectories by year and month: `~/rackup/recordings/2025/08/`.
+- The RackUp Server monitors the recordings directory and tracks file metadata (size, duration) in the database once OBS finishes writing.
+- A "Recordings" screen in the UI lists all recorded frames with player names, date/time, duration, and file size.
+- Nice-to-have: in-browser video playback of recorded frames directly from the RackUp UI.
 
 ### 6.2 Data Model (Conceptual)
 - **Player**: id, name, created_at, archived (boolean).
 - **Session**: id, date, started_at, ended_at (nullable if active), player_ids (participants).
-- **Frame**: id, session_id, winner_id, loser_id, recorded_at.
+- **Frame**: id, session_id, winner_id, loser_id, recorded_at, video_file_path (nullable), recording_started_at (nullable), recording_ended_at (nullable).
+- **Recording**: id, frame_id (nullable — allows orphan recordings), file_path, file_size, duration_seconds, player_a_id, player_b_id, created_at, uploaded (boolean), upload_url (nullable).
 
-### 6.3 Backup & Export
-- Nice-to-have: an "Export Data" button in settings that downloads all data as a JSON or CSV file, for safekeeping or migration.
+### 6.5 Backup & Export
+- An "Export Data" button in settings that downloads all scoring data as a JSON or CSV file.
+- Video files can be backed up independently via file system tools (rsync, network share, etc.).
+- Nice-to-have: automated backup of the SQLite database to a network share or cloud storage on a schedule.
 
 ---
 
@@ -161,18 +224,55 @@ RackUp is a touch-friendly digital scoreboard web application designed to replac
 ### 7.2 Technology Stack (Recommended)
 - **Frontend**: React with TypeScript.
 - **Styling**: Tailwind CSS.
-- **Local storage**: IndexedDB via Dexie.js (or similar wrapper).
-- **No backend server required** — all logic and storage runs client-side in the browser.
-- **Build tool**: Vite.
+- **Backend**: Node.js (Express or Fastify) running locally on the mini PC.
+- **Database**: SQLite via better-sqlite3 (server-side, more robust than IndexedDB for a system with a backend).
+- **OBS Integration**: obs-websocket-js (Node.js client for the OBS WebSocket protocol v5).
+- **Build tool**: Vite (frontend), tsx or ts-node (backend).
+- **Process manager**: PM2 or systemd to keep the backend running on boot.
 
-### 7.3 Deployment
-- The app should be deployable as a static site (HTML/CSS/JS bundle).
-- Can be served locally from the Raspberry Pi (e.g., via a simple HTTP server like `serve` or `nginx`).
-- Alternatively, could be hosted on a free static host (Netlify, Vercel) and loaded in the browser on the device.
+### 7.3 Architecture
+- The system runs as two processes on the mini PC:
+  1. **RackUp Server** (Node.js): serves the frontend, provides a REST API for scoring/data, communicates with OBS via WebSocket, manages video file naming and organisation.
+  2. **OBS Studio**: runs in the background (can be headless or minimised), receives commands from RackUp Server, handles video encoding and file output.
+- The frontend (React app) runs in Chromium in fullscreen/kiosk mode on the touchscreen display.
+- The frontend communicates with the backend via REST API (localhost).
+- The backend communicates with OBS via the OBS WebSocket protocol (localhost:4455 by default).
 
-### 7.4 Performance
+```
+┌──────────────────┐   REST API    ┌──────────────────┐  OBS WebSocket  ┌──────────┐
+│   RackUp UI      │◄────────────►│  RackUp Server   │◄──────────────►│   OBS    │
+│   (Chromium      │  localhost    │  (Node.js)       │  localhost      │  Studio  │
+│   fullscreen)    │              │                  │  :4455          │          │
+│                  │              │  - REST API      │                 │  - Webcam│
+│   Touchscreen    │              │  - SQLite DB     │                 │  - Encode│
+│   Display        │              │  - File mgmt     │                 │  - Record│
+└──────────────────┘              └──────────────────┘                 └──────────┘
+                                         │
+                                    ┌────┴─────┐
+                                    │ /recordings │
+                                    │ (local SSD) │
+                                    └──────────┘
+```
+
+### 7.4 Stream Deck Fallback
+- The Elgato Stream Deck is retained as a secondary input device.
+- Stream Deck buttons can call the RackUp Server REST API via HTTP requests (using the Stream Deck "Website" or "API Ninja" plugin) to trigger actions:
+  - Start/stop recording.
+  - Record a frame result (if player matchup is already selected on screen).
+- This provides a physical button fallback if the touchscreen is inconvenient during play.
+
+### 7.5 Deployment
+- The app runs entirely on the local mini PC. No cloud dependency.
+- On boot, the mini PC should automatically:
+  1. Start OBS Studio (minimised/headless).
+  2. Start the RackUp Server (via PM2 or systemd).
+  3. Launch Chromium in kiosk mode pointing to `http://localhost:3000`.
+- The entire startup sequence should be automated so the user just powers on the device and everything is ready.
+
+### 7.6 Performance
 - The app must load and be interactive within 3 seconds.
 - Frame recording (tap to save) must feel instant — under 100ms perceived latency.
+- OBS start/stop recording commands should execute within 500ms.
 - Stat calculations for up to 5 years of data (estimated: ~5,000 frames, ~500 sessions) should compute in under 1 second.
 
 ---
@@ -180,8 +280,13 @@ RackUp is a touch-friendly digital scoreboard web application designed to replac
 ## 8. Non-Functional Requirements
 
 ### 8.1 Reliability
-- The app should never lose data. All writes should be immediately persisted.
+- The app should never lose scoring data. All writes should be immediately persisted to SQLite.
 - If the browser crashes mid-session, reopening the app should restore the active session exactly as it was.
+- If OBS crashes or the WebSocket connection drops, RackUp should:
+  - Show a clear warning on the UI (e.g., "Recording unavailable — OBS disconnected").
+  - Continue to function fully for scoring — OBS being down must never block score recording.
+  - Automatically reconnect to OBS when it becomes available again.
+- If a recording is interrupted (power loss, OBS crash), the MKV container should be recoverable (MKV is resilient to incomplete writes, unlike MP4).
 
 ### 8.2 Simplicity
 - The app must be usable by someone with zero technical literacy. If it requires explanation beyond "tap the winner, tap the loser", it's too complicated.
@@ -196,19 +301,23 @@ RackUp is a touch-friendly digital scoreboard web application designed to replac
 
 ## 9. Future Enhancements (Out of Scope for V1, But Design With Them in Mind)
 
+- **Automatic upload**: after a session ends (or on a schedule), automatically upload recordings to YouTube (unlisted), Google Drive, a NAS, or another cloud service. Tag uploads with player names and session metadata.
+- **Video playback in UI**: browse and play back recorded frames directly from the RackUp stats/history screens.
 - **Photo/avatar support** for players.
 - **Game type support**: different pool variants (8-ball, 9-ball, killer, etc.) tracked separately.
 - **Handicap system**: assign handicaps to balance matchups between players of different skill levels.
 - **Achievement badges**: fun milestones like "10-win streak", "100 frames played", "Giant killer" (beating the top-ranked player).
 - **Sound effects**: optional satisfying sounds when recording frames.
-- **Multi-device sync**: if a second device (e.g., a phone) is ever used, data could sync via a simple backend or peer-to-peer.
+- **Multi-device sync**: if a second device (e.g., a phone) is ever used, data could sync via the local server API.
 - **Home Assistant integration**: display current session status on an HA dashboard, or trigger automations (e.g., turn on the table light when a session starts).
 - **Printable reports**: generate a monthly/yearly summary as a PDF.
+- **Highlight clipping**: mark specific moments during a frame for easy retrieval later (e.g., "great shot at 4:32").
 
 ---
 
 ## 10. Acceptance Criteria (Definition of Done for V1)
 
+### Scoring
 1. ✅ Users can add and manage a roster of players.
 2. ✅ Users can start a new session, select tonight's players, and record frame results with 2–3 taps.
 3. ✅ The live session screen shows running totals, head-to-head records, and a session leaderboard — updated in real time.
@@ -216,6 +325,18 @@ RackUp is a touch-friendly digital scoreboard web application designed to replac
 5. ✅ All past sessions are stored and browsable.
 6. ✅ Per-player statistics are available (overall, head-to-head, per-month, per-year).
 7. ✅ Monthly and yearly leaderboards show the champion.
-8. ✅ The UI is touch-friendly, high-contrast, and usable by elderly non-technical users.
-9. ✅ The app works fully offline and survives power loss without data loss.
-10. ✅ The app runs in fullscreen kiosk mode in Chromium.
+
+### Recording & OBS Integration
+8. ✅ RackUp can start and stop OBS recording via WebSocket.
+9. ✅ Each frame recording is saved as an individual video file, named with date, time, player names, and frame number.
+10. ✅ Recordings are organised in a structured directory (by year/month).
+11. ✅ A recording indicator is visible on the session screen when OBS is actively recording.
+12. ✅ OBS text overlay is updated in real time with current players and score.
+13. ✅ Frame results can be recorded without video (recording is optional, not blocking).
+
+### UX & Reliability
+14. ✅ The UI is touch-friendly, high-contrast, and usable by elderly non-technical users.
+15. ✅ The app works fully offline and survives power loss without data loss.
+16. ✅ The app runs in fullscreen kiosk mode in Chromium.
+17. ✅ The entire system (OBS + RackUp Server + Chromium) starts automatically on device boot.
+18. ✅ The Stream Deck can trigger start/stop recording and basic actions via the RackUp REST API as a fallback.

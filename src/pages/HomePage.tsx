@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Player, Session, Frame } from '../db/supabase';
 import {
   startSession,
@@ -8,19 +9,49 @@ import {
   addPlayerToSession,
 } from '../db/services';
 import { useHomeData } from '../hooks/useHomeData';
+import { useObsStatus } from '../hooks/useObsStatus';
 
 type View = 'idle' | 'picking' | 'session' | 'summary';
 type MatchStep = 'pickPlayer1' | 'pickPlayer2' | 'gameOn';
 
+const MATCH_STATE_KEY = 'rackup-match-state';
+
+interface PersistedMatchState {
+  matchStep: MatchStep;
+  player1Id: number | null;
+  player2Id: number | null;
+  challengerQueue: number[];
+}
+
+function loadMatchState(): PersistedMatchState | null {
+  try {
+    const raw = localStorage.getItem(MATCH_STATE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedMatchState;
+  } catch {
+    return null;
+  }
+}
+
+function saveMatchState(state: PersistedMatchState) {
+  localStorage.setItem(MATCH_STATE_KEY, JSON.stringify(state));
+}
+
+function clearMatchState() {
+  localStorage.removeItem(MATCH_STATE_KEY);
+}
+
 export default function HomePage() {
+  const saved = loadMatchState();
+
   const [view, setView] = useState<View>('idle');
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<number[]>([]);
 
-  // Match state — winner stays on with challenger queue
-  const [matchStep, setMatchStep] = useState<MatchStep>('pickPlayer1');
-  const [player1Id, setPlayer1Id] = useState<number | null>(null);
-  const [player2Id, setPlayer2Id] = useState<number | null>(null);
-  const [challengerQueue, setChallengerQueue] = useState<number[]>([]);
+  // Match state — winner stays on with challenger queue (restored from localStorage)
+  const [matchStep, setMatchStep] = useState<MatchStep>(saved?.matchStep ?? 'pickPlayer1');
+  const [player1Id, setPlayer1Id] = useState<number | null>(saved?.player1Id ?? null);
+  const [player2Id, setPlayer2Id] = useState<number | null>(saved?.player2Id ?? null);
+  const [challengerQueue, setChallengerQueue] = useState<number[]>(saved?.challengerQueue ?? []);
 
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [confirmUndo, setConfirmUndo] = useState(false);
@@ -37,6 +68,78 @@ export default function HomePage() {
     monthlyLeaderboard,
     refresh,
   } = useHomeData();
+
+  // Persist match state to localStorage whenever it changes
+  useEffect(() => {
+    if (activeSession) {
+      saveMatchState({ matchStep, player1Id, player2Id, challengerQueue });
+    }
+  }, [activeSession, matchStep, player1Id, player2Id, challengerQueue]);
+
+  // OBS recording state
+  const [recordingEnabled, setRecordingEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('rackup-recording-enabled') === 'true';
+  });
+  const obsStatus = useObsStatus(recordingEnabled);
+
+  // Persist recording toggle + start/stop OBS if mid-session
+  const toggleRecording = useCallback(async () => {
+    const next = !recordingEnabled;
+    setRecordingEnabled(next);
+    localStorage.setItem('rackup-recording-enabled', String(next));
+    updateOverlay({ isRecording: next });
+
+    if (activeSession && next) {
+      // Toggled ON mid-session → start recording now
+      try {
+        await fetch('/api/obs/start-recording', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+      } catch (e) {
+        console.warn('OBS: Failed to start recording', e);
+      }
+    } else if (activeSession && !next && obsStatus.recording) {
+      // Toggled OFF mid-session → stop recording
+      try {
+        await fetch('/api/obs/stop-recording', { method: 'POST' });
+      } catch (e) {
+        console.warn('OBS: Failed to stop recording', e);
+      }
+    }
+  }, [recordingEnabled, activeSession, obsStatus.recording]);
+
+  const navigate = useNavigate();
+
+  // PiP preview screenshot polling
+  const [pipSrc, setPipSrc] = useState<string | null>(null);
+  const pipIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!recordingEnabled || !obsStatus.connected) {
+      setPipSrc(null);
+      return;
+    }
+
+    const fetchFrame = async () => {
+      try {
+        const res = await fetch('/api/obs/screenshot');
+        if (res.ok) {
+          const data = await res.json();
+          setPipSrc(data.imageData);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    fetchFrame();
+    pipIntervalRef.current = setInterval(fetchFrame, 2000);
+    return () => {
+      if (pipIntervalRef.current) clearInterval(pipIntervalRef.current);
+    };
+  }, [recordingEnabled, obsStatus.connected]);
 
   // Summary data
   const [summaryData, setSummaryData] = useState<{
@@ -58,6 +161,19 @@ export default function HomePage() {
     (id: number) => allPlayers.find(p => p.id === id)?.name ?? '?',
     [allPlayers],
   );
+
+  // ── Overlay sync ──
+  const updateOverlay = useCallback(async (state: Record<string, unknown>) => {
+    try {
+      await fetch('/api/overlay/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(state),
+      });
+    } catch (e) {
+      console.warn('Overlay: Failed to update', e);
+    }
+  }, []);
 
   // ── Running totals ──
   const runningTotals = useMemo(() => {
@@ -98,7 +214,31 @@ export default function HomePage() {
     setMatchStep('gameOn');
     setSelectedPlayerIds([]);
     setView('session');
+    updateOverlay({
+      visible: true,
+      playerA: { id: String(first), name: playerName(first), score: 0 },
+      playerB: { id: String(second), name: playerName(second), score: 0 },
+      sessionDate: new Date().toISOString().slice(0, 10),
+      frameNumber: 1,
+      lastWinnerId: null,
+    });
     refresh();
+
+    // Start OBS recording for first frame if enabled
+    if (recordingEnabled) {
+      try {
+        await fetch('/api/obs/start-recording', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            directory: undefined, // server will use default
+            filename: undefined,  // server will generate
+          }),
+        });
+      } catch (e) {
+        console.warn('OBS: Failed to start recording', e);
+      }
+    }
   };
 
   const togglePlayer = (id: number) => {
@@ -119,12 +259,81 @@ export default function HomePage() {
     const remaining = activeSession.playerIds.filter(pid => pid !== player1Id && pid !== id);
     setChallengerQueue(remaining);
     setMatchStep('gameOn');
+    // Compute h2h between player1 and the selected player2
+    const p1h2h = sessionFrames.filter(f => f.winnerId === player1Id && f.loserId === id).length;
+    const p2h2h = sessionFrames.filter(f => f.winnerId === id && f.loserId === player1Id).length;
+    updateOverlay({
+      visible: true,
+      playerA: { id: String(player1Id!), name: playerName(player1Id!), score: p1h2h },
+      playerB: { id: String(id), name: playerName(id), score: p2h2h },
+      frameNumber: sessionFrames.length + 1,
+      lastWinnerId: null,
+    });
   };
 
   const handleRecordWinner = async (winnerId: number) => {
     if (!activeSession?.id || player1Id === null || player2Id === null) return;
     const loserId = winnerId === player1Id ? player2Id : player1Id;
-    await recordFrame(activeSession.id, winnerId, loserId);
+
+    // OBS frame transition if recording enabled
+    let videoFilePath: string | undefined;
+    if (recordingEnabled && obsStatus.recording) {
+      try {
+        const p1Wins = sessionFrames.filter(f => f.winnerId === player1Id).length + (winnerId === player1Id ? 1 : 0);
+        const p2Wins = sessionFrames.filter(f => f.winnerId === player2Id).length + (winnerId === player2Id ? 1 : 0);
+        const res = await fetch('/api/obs/frame-transition', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            player1: playerName(player1Id),
+            player2: playerName(player2Id),
+            score: `${p1Wins}-${p2Wins}`,
+            sessionDate: activeSession.date,
+            frameNumber: sessionFrames.length + 1,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          videoFilePath = data.videoFilePath;
+        }
+      } catch (e) {
+        console.warn('OBS: Frame transition failed', e);
+      }
+    }
+
+    // Compute head-to-head scores optimistically for the NEXT matchup
+    const nextWinnerId = winnerId;
+    const nextLoserId = loserId;
+
+    // After recording, winner stays on, loser goes to queue
+    // Figure out who the next opponent will be
+    let nextP1Id = winnerId;
+    let nextP2Id: number;
+    let nextP1Score: number;
+    let nextP2Score: number;
+
+    if (challengerQueue.length > 0) {
+      nextP2Id = challengerQueue[0];
+      // H2H between winner and next challenger from sessionFrames
+      // +1 for the frame we're about to record if it affects this h2h
+      nextP1Score = sessionFrames.filter(f => f.winnerId === nextP1Id && f.loserId === nextP2Id).length;
+      nextP2Score = sessionFrames.filter(f => f.winnerId === nextP2Id && f.loserId === nextP1Id).length;
+    } else {
+      nextP2Id = loserId;
+      // Same two players continue — update the h2h with the new frame
+      nextP1Score = sessionFrames.filter(f => f.winnerId === nextP1Id && f.loserId === nextP2Id).length + (winnerId === nextP1Id && loserId === nextP2Id ? 1 : 0);
+      nextP2Score = sessionFrames.filter(f => f.winnerId === nextP2Id && f.loserId === nextP1Id).length + (winnerId === nextP2Id && loserId === nextP1Id ? 1 : 0);
+    }
+
+    updateOverlay({
+      visible: true,
+      playerA: { id: String(nextP1Id), name: playerName(nextP1Id), score: nextP1Score },
+      playerB: { id: String(nextP2Id), name: playerName(nextP2Id), score: nextP2Score },
+      frameNumber: sessionFrames.length + 2, // +1 for current frame, +1 for next
+      lastWinnerId: String(winnerId),
+    });
+
+    await recordFrame(activeSession.id, winnerId, loserId, videoFilePath);
     showFeedback(`${playerName(winnerId)} wins!`);
 
     // Winner stays on — loser goes to back of queue, next challenger steps up
@@ -134,12 +343,10 @@ export default function HomePage() {
       setPlayer2Id(nextChallenger);
       setChallengerQueue([...restOfQueue, loserId]);
     } else {
-      // Only 2 players in session — just keep them, winner stays as player 1
       setPlayer1Id(winnerId);
       setPlayer2Id(loserId);
     }
     refresh();
-    // Stay in gameOn
   };
 
   const handleNewMatchup = () => {
@@ -147,6 +354,7 @@ export default function HomePage() {
     setPlayer2Id(null);
     setChallengerQueue([]);
     setMatchStep('pickPlayer1');
+    updateOverlay({ visible: false });
   };
 
   // Players not in the current session (available to add)
@@ -167,6 +375,14 @@ export default function HomePage() {
   const handleUndo = async () => {
     if (!activeSession?.id) return;
     await deleteLastFrame(activeSession.id);
+    // Stop current recording segment (orphan file)
+    if (recordingEnabled && obsStatus.recording) {
+      try {
+        await fetch('/api/obs/stop-recording', { method: 'POST' });
+      } catch (e) {
+        console.warn('OBS: Failed to stop recording on undo', e);
+      }
+    }
     setConfirmUndo(false);
     showFeedback('Last frame removed');
     refresh();
@@ -174,11 +390,21 @@ export default function HomePage() {
 
   const handleEndSession = async () => {
     if (!activeSession?.id) return;
+    // Stop OBS recording if active
+    if (recordingEnabled && obsStatus.recording) {
+      try {
+        await fetch('/api/obs/stop-recording', { method: 'POST' });
+      } catch (e) {
+        console.warn('OBS: Failed to stop recording', e);
+      }
+    }
+    updateOverlay({ visible: false, isRecording: false });
     const frames = [...sessionFrames];
     const session = { ...activeSession };
     const pIds = activeSession.playerIds;
     const sessionPlayers = allPlayers.filter(p => p.id !== undefined && pIds.includes(p.id));
     await endSession(activeSession.id);
+    clearMatchState();
     setSummaryData({ frames, session: session as Session, players: sessionPlayers });
     setConfirmEnd(false);
     setView('summary');
@@ -296,6 +522,21 @@ export default function HomePage() {
           </>
         )}
 
+        {/* Record option on picker screen */}
+        <button
+          onClick={toggleRecording}
+          className={`btn-press w-full py-4 xl:py-6 panel text-lg xl:text-2xl font-semibold min-h-[56px] xl:min-h-[80px] flex items-center justify-center gap-3 xl:gap-4 ${
+            recordingEnabled ? '!border-loss/60 text-loss' : 'text-chalk-dim'
+          }`}
+        >
+          <span className={`inline-flex items-center justify-center w-6 h-6 xl:w-7 xl:h-7 rounded border-2 flex-shrink-0 ${
+            recordingEnabled ? 'border-loss bg-loss/20' : 'border-chalk-dim/50'
+          }`}>
+            {recordingEnabled && <span className="text-loss text-sm xl:text-base font-black">&#10003;</span>}
+          </span>
+          Auto-Record Frames
+        </button>
+
         {selectedPlayerIds.length >= 2 && (
           <button
             onClick={handleStartSession}
@@ -360,7 +601,13 @@ export default function HomePage() {
   const totalFrames = sessionFrames.length;
 
   return (
-    <div className="flex flex-col h-full gap-0 -m-4 xl:-m-8 2xl:-m-10">
+    <div className="flex flex-col h-full gap-0 -mx-4 -mt-4 xl:-mx-8 xl:-mt-8 2xl:-mx-10 2xl:-mt-10">
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+      `}</style>
       {/* Feedback toast */}
       {feedback && (
         <div className="fixed top-4 xl:top-8 left-1/2 -translate-x-1/2 bg-win text-board-dark font-bold text-xl xl:text-3xl 2xl:text-4xl px-8 xl:px-14 py-4 xl:py-6 rounded-xl shadow-lg z-50">
@@ -374,6 +621,18 @@ export default function HomePage() {
           <span className="bg-gold text-board-dark font-black text-sm xl:text-xl 2xl:text-2xl px-2 py-1 xl:px-4 xl:py-2 rounded">8 BALL</span>
         </div>
         <h1 className="font-display text-chalk text-xl xl:text-3xl 2xl:text-4xl tracking-wide chalk-text absolute left-1/2 -translate-x-1/2">THE CUEMANS ARCH</h1>
+
+        {/* REC Indicator */}
+        {recordingEnabled && obsStatus.recording && (
+          <div className="flex items-center gap-1.5 xl:gap-2 ml-4">
+            <span
+              className="w-3 h-3 xl:w-4 xl:h-4 rounded-full bg-loss"
+              style={{ animation: 'pulse 1.5s ease-in-out infinite' }}
+            />
+            <span className="text-loss font-bold text-sm xl:text-lg">REC</span>
+          </div>
+        )}
+
         <div className="text-chalk-dim text-sm xl:text-xl 2xl:text-2xl text-right ml-auto">
           <span>Players: <span className="text-chalk font-bold score-num">{activeSession?.playerIds.length ?? 0}</span></span>
           <span className="ml-3 xl:ml-6">Frames: <span className="text-chalk font-bold score-num">{totalFrames}</span></span>
@@ -381,7 +640,7 @@ export default function HomePage() {
       </div>
 
       {/* ── Main Area: Current Match ── */}
-      <div className="flex-1 flex flex-col items-center px-4 xl:px-10 py-4 min-h-0 overflow-y-auto">
+      <div className="flex-1 flex flex-col items-center px-4 xl:px-10 py-4 min-h-0 overflow-y-auto relative">
 
         {/* Selecting Player 1 */}
         {matchStep === 'pickPlayer1' && (
@@ -494,28 +753,40 @@ export default function HomePage() {
             >
               Change Players
             </button>
+
           </div>
         )}
+
+        {/* PiP Camera Preview */}
+        {recordingEnabled && obsStatus.connected && (
+          <button
+            onClick={() => navigate('/camera')}
+            className="btn-press absolute top-2 right-2 xl:top-4 xl:right-4 w-32 h-20 xl:w-44 xl:h-26 panel !border-2 overflow-hidden z-30 p-0 shadow-lg"
+            style={{ borderColor: obsStatus.recording ? 'rgba(239,68,68,0.6)' : 'rgba(212,175,55,0.4)' }}
+          >
+            {pipSrc ? (
+              <img src={pipSrc} alt="OBS" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <span className="text-chalk-dim text-xs">CAM</span>
+              </div>
+            )}
+            {obsStatus.recording && (
+              <span
+                className="absolute top-1 right-1 w-2 h-2 rounded-full bg-loss"
+                style={{ animation: 'pulse 1.5s ease-in-out infinite' }}
+              />
+            )}
+          </button>
+        )}
+
       </div>
 
-      {/* ── Running Totals ── */}
-      <div className="panel !rounded-none !border-x-0 !border-b-0 border-t-2 border-board-light flex-shrink-0">
-        <div className="px-4 py-2 xl:px-8 xl:py-4 flex items-center justify-between border-b border-board-light/30">
-          <h2 className="font-display text-gold font-bold text-base xl:text-xl 2xl:text-2xl uppercase tracking-wider">Running Totals</h2>
-          <span className="text-chalk-dim text-sm xl:text-lg">Players / Frames</span>
-        </div>
-        <div className="px-4 py-2 xl:px-8 xl:py-4 flex flex-wrap gap-x-6 xl:gap-x-10 gap-y-1 xl:gap-y-3">
-          {runningTotals.map(p => (
-            <div key={p.id} className="flex items-center gap-2 xl:gap-4 min-w-[120px] xl:min-w-[200px]">
-              <span className="text-chalk font-semibold text-lg xl:text-2xl 2xl:text-3xl truncate chalk-text">{p.name}</span>
-              <span className="text-gold font-black text-2xl xl:text-5xl 2xl:text-6xl ml-auto score-num">{p.frames}</span>
-            </div>
-          ))}
-        </div>
-
+      {/* ── Totals + Actions (pinned bottom) ── */}
+      <div className="flex-shrink-0 border-t border-board-light/30">
         {/* Add Player overlay */}
         {showAddPlayer && (
-          <div className="px-4 py-3 xl:px-8 xl:py-5 border-t border-board-light/30 bg-board-dark/50">
+          <div className="px-4 py-3 xl:px-8 xl:py-5 border-b border-board-light/30 bg-board-dark/50">
             <div className="flex items-center justify-between mb-2 xl:mb-4">
               <span className="font-display text-gold font-bold text-base xl:text-xl uppercase tracking-wider">Add Player</span>
               <button
@@ -543,68 +814,96 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* Session actions row */}
-        <div className="px-4 py-2 xl:px-8 xl:py-4 flex gap-2 xl:gap-4 border-t border-board-light/30">
-          {sessionFrames.length > 0 && (
-            confirmUndo ? (
+        {/* Combined totals + actions row */}
+        <div className="px-4 py-1.5 xl:px-8 xl:py-2 flex items-center gap-3 xl:gap-6">
+          {/* Running totals - left side */}
+          <div className="flex items-center gap-4 xl:gap-8 flex-wrap">
+            {runningTotals.map(p => (
+              <div key={p.id} className="flex items-center gap-1.5 xl:gap-3">
+                <span className="text-chalk font-semibold text-base xl:text-xl 2xl:text-2xl truncate chalk-text">{p.name}</span>
+                <span className="text-gold font-black text-xl xl:text-3xl 2xl:text-4xl score-num">{p.frames}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Action buttons - right side */}
+          <div className="flex items-center gap-2 xl:gap-3 flex-shrink-0">
+            {sessionFrames.length > 0 && (
+              confirmUndo ? (
+                <>
+                  <button
+                    onClick={handleUndo}
+                    className="btn-press py-2 xl:py-3 px-3 xl:px-5 bg-loss text-board-dark text-sm xl:text-lg font-bold rounded-lg min-h-[40px] xl:min-h-[56px]"
+                  >
+                    Confirm Undo
+                  </button>
+                  <button
+                    onClick={() => setConfirmUndo(false)}
+                    className="btn-press py-2 xl:py-3 px-3 xl:px-5 panel text-chalk-dim text-sm xl:text-lg font-bold min-h-[40px] xl:min-h-[56px]"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setConfirmUndo(true)}
+                  className="btn-press py-2 xl:py-3 px-3 xl:px-5 panel text-chalk-dim text-sm xl:text-lg font-semibold min-h-[40px] xl:min-h-[56px]"
+                >
+                  Undo
+                </button>
+              )
+            )}
+
+            {!showAddPlayer && (
+              <button
+                onClick={() => setShowAddPlayer(true)}
+                className="btn-press py-2 xl:py-3 px-3 xl:px-5 panel text-gold text-sm xl:text-lg font-semibold min-h-[40px] xl:min-h-[56px]"
+              >
+                + Player
+              </button>
+            )}
+
+            {/* Auto-Record checkbox */}
+            <button
+              onClick={toggleRecording}
+              className={`btn-press py-2 xl:py-3 px-3 xl:px-5 panel text-sm xl:text-lg font-semibold min-h-[40px] xl:min-h-[56px] flex items-center gap-1.5 xl:gap-2 ${
+                recordingEnabled ? '!border-loss/60 text-loss' : 'text-chalk-dim'
+              }`}
+            >
+              <span className={`inline-flex items-center justify-center w-4 h-4 xl:w-5 xl:h-5 rounded border-2 flex-shrink-0 ${
+                recordingEnabled ? 'border-loss bg-loss/20' : 'border-chalk-dim/50'
+              }`}>
+                {recordingEnabled && <span className="text-loss text-[10px] xl:text-xs font-black">&#10003;</span>}
+              </span>
+              Record
+            </button>
+
+            {confirmEnd ? (
               <>
                 <button
-                  onClick={handleUndo}
-                  className="btn-press py-3 xl:py-5 px-4 xl:px-6 bg-loss text-board-dark text-base xl:text-xl font-bold rounded-lg min-h-[48px] xl:min-h-[72px]"
+                  onClick={handleEndSession}
+                  className="btn-press py-2 xl:py-3 px-3 xl:px-5 bg-loss text-board-dark text-sm xl:text-lg font-bold rounded-lg min-h-[40px] xl:min-h-[56px]"
                 >
-                  Confirm Undo
+                  Confirm End
                 </button>
                 <button
-                  onClick={() => setConfirmUndo(false)}
-                  className="btn-press py-3 xl:py-5 px-4 xl:px-6 panel text-chalk-dim text-base xl:text-xl font-bold min-h-[48px] xl:min-h-[72px]"
+                  onClick={() => setConfirmEnd(false)}
+                  className="btn-press py-2 xl:py-3 px-3 xl:px-5 panel text-chalk-dim text-sm xl:text-lg font-bold min-h-[40px] xl:min-h-[56px]"
                 >
                   Cancel
                 </button>
               </>
             ) : (
               <button
-                onClick={() => setConfirmUndo(true)}
-                className="btn-press py-3 xl:py-5 px-4 xl:px-6 panel text-chalk-dim text-base xl:text-xl font-semibold min-h-[48px] xl:min-h-[72px]"
+                onClick={() => setConfirmEnd(true)}
+                className="btn-press py-2 xl:py-3 px-3 xl:px-5 panel text-chalk-dim text-sm xl:text-lg font-semibold min-h-[40px] xl:min-h-[56px]"
               >
-                Undo
+                End Session
               </button>
-            )
-          )}
-
-          <div className="flex-1" />
-
-          {!showAddPlayer && (
-            <button
-              onClick={() => setShowAddPlayer(true)}
-              className="btn-press py-3 xl:py-5 px-4 xl:px-6 panel text-gold text-base xl:text-xl font-semibold min-h-[48px] xl:min-h-[72px]"
-            >
-              + Player
-            </button>
-          )}
-
-          {confirmEnd ? (
-            <>
-              <button
-                onClick={handleEndSession}
-                className="btn-press py-3 xl:py-5 px-4 xl:px-6 bg-loss text-board-dark text-base xl:text-xl font-bold rounded-lg min-h-[48px] xl:min-h-[72px]"
-              >
-                Confirm End
-              </button>
-              <button
-                onClick={() => setConfirmEnd(false)}
-                className="btn-press py-3 xl:py-5 px-4 xl:px-6 panel text-chalk-dim text-base xl:text-xl font-bold min-h-[48px] xl:min-h-[72px]"
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => setConfirmEnd(true)}
-              className="btn-press py-3 xl:py-5 px-4 xl:px-6 panel text-chalk-dim text-base xl:text-xl font-semibold min-h-[48px] xl:min-h-[72px]"
-            >
-              End Session
-            </button>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
