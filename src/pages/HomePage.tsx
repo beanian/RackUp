@@ -302,9 +302,6 @@ export default function HomePage() {
     }
 
     // Compute head-to-head scores optimistically for the NEXT matchup
-    const nextWinnerId = winnerId;
-    const nextLoserId = loserId;
-
     // After recording, winner stays on, loser goes to queue
     // Figure out who the next opponent will be
     let nextP1Id = winnerId;
