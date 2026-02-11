@@ -112,32 +112,60 @@ export default function HomePage() {
 
   const navigate = useNavigate();
 
-  // PiP preview screenshot polling
-  const [pipSrc, setPipSrc] = useState<string | null>(null);
-  const pipIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // PiP preview via OBS Virtual Camera
+  const pipVideoRef = useRef<HTMLVideoElement>(null);
+  const pipStreamRef = useRef<MediaStream | null>(null);
+  const [pipReady, setPipReady] = useState(false);
 
   useEffect(() => {
     if (!recordingEnabled || !obsStatus.connected) {
-      setPipSrc(null);
+      if (pipStreamRef.current) {
+        pipStreamRef.current.getTracks().forEach(t => t.stop());
+        pipStreamRef.current = null;
+      }
+      setPipReady(false);
       return;
     }
 
-    const fetchFrame = async () => {
+    let cancelled = false;
+
+    const connectPip = async () => {
       try {
-        const res = await fetch('/api/obs/screenshot');
-        if (res.ok) {
-          const data = await res.json();
-          setPipSrc(data.imageData);
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const obsDevice = devices.find(d =>
+          d.kind === 'videoinput' && d.label.toLowerCase().includes('obs virtual camera')
+        );
+        if (!obsDevice) return;
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: obsDevice.deviceId }, width: 640, height: 360 },
+          audio: false,
+        });
+
+        if (cancelled) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
         }
+
+        pipStreamRef.current = stream;
+        if (pipVideoRef.current) {
+          pipVideoRef.current.srcObject = stream;
+        }
+        setPipReady(true);
       } catch {
-        // ignore
+        // Virtual camera not available — PiP just won't show
       }
     };
 
-    fetchFrame();
-    pipIntervalRef.current = setInterval(fetchFrame, 2000);
+    connectPip();
+
     return () => {
-      if (pipIntervalRef.current) clearInterval(pipIntervalRef.current);
+      cancelled = true;
+      if (pipStreamRef.current) {
+        pipStreamRef.current.getTracks().forEach(t => t.stop());
+        pipStreamRef.current = null;
+      }
+      setPipReady(false);
     };
   }, [recordingEnabled, obsStatus.connected]);
 
@@ -755,8 +783,14 @@ export default function HomePage() {
             className="btn-press absolute top-2 right-2 xl:top-4 xl:right-4 w-32 h-20 xl:w-44 xl:h-26 panel !border-2 overflow-hidden z-30 p-0 shadow-lg"
             style={{ borderColor: obsStatus.recording ? 'rgba(239,68,68,0.6)' : 'rgba(212,175,55,0.4)' }}
           >
-            {pipSrc ? (
-              <img src={pipSrc} alt="OBS" className="w-full h-full object-cover" />
+            {pipReady ? (
+              <video
+                ref={pipVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <span className="text-chalk-dim text-xs">CAM</span>
