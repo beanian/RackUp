@@ -275,30 +275,22 @@ export default function HomePage() {
     if (!activeSession?.id || player1Id === null || player2Id === null) return;
     const loserId = winnerId === player1Id ? player2Id : player1Id;
 
-    // OBS frame transition if recording enabled
-    let videoFilePath: string | undefined;
+    // OBS frame transition — fire and forget (don't block UI)
+    // videoFilePath will be undefined for the DB write; the server logs the file path
     if (recordingEnabled && obsStatus.recording) {
-      try {
-        const p1Wins = sessionFrames.filter(f => f.winnerId === player1Id).length + (winnerId === player1Id ? 1 : 0);
-        const p2Wins = sessionFrames.filter(f => f.winnerId === player2Id).length + (winnerId === player2Id ? 1 : 0);
-        const res = await fetch('/api/obs/frame-transition', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            player1: playerName(player1Id),
-            player2: playerName(player2Id),
-            score: `${p1Wins}-${p2Wins}`,
-            sessionDate: activeSession.date,
-            frameNumber: sessionFrames.length + 1,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          videoFilePath = data.videoFilePath;
-        }
-      } catch (e) {
-        console.warn('OBS: Frame transition failed', e);
-      }
+      const p1Wins = sessionFrames.filter(f => f.winnerId === player1Id).length + (winnerId === player1Id ? 1 : 0);
+      const p2Wins = sessionFrames.filter(f => f.winnerId === player2Id).length + (winnerId === player2Id ? 1 : 0);
+      fetch('/api/obs/frame-transition', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player1: playerName(player1Id),
+          player2: playerName(player2Id),
+          score: `${p1Wins}-${p2Wins}`,
+          sessionDate: activeSession.date,
+          frameNumber: sessionFrames.length + 1,
+        }),
+      }).catch(e => console.warn('OBS: Frame transition failed', e));
     }
 
     // Compute head-to-head scores optimistically for the NEXT matchup
@@ -330,10 +322,8 @@ export default function HomePage() {
       lastWinnerId: String(winnerId),
     });
 
-    await recordFrame(activeSession.id, winnerId, loserId, videoFilePath);
+    // Optimistic UI update — move players immediately, write to DB in background
     showFeedback(`${playerName(winnerId)} wins!`);
-
-    // Winner stays on — loser goes to back of queue, next challenger steps up
     if (challengerQueue.length > 0) {
       const [nextChallenger, ...restOfQueue] = challengerQueue;
       setPlayer1Id(winnerId);
@@ -343,7 +333,11 @@ export default function HomePage() {
       setPlayer1Id(winnerId);
       setPlayer2Id(loserId);
     }
-    refresh();
+
+    // Fire DB write + refresh in background (don't block the UI)
+    recordFrame(activeSession.id, winnerId, loserId, videoFilePath)
+      .then(() => refresh())
+      .catch(e => console.warn('Failed to record frame:', e));
   };
 
   const handleNewMatchup = () => {
