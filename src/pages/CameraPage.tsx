@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useObsStatus } from '../hooks/useObsStatus';
 
 function formatDuration(seconds: number): string {
@@ -7,15 +7,83 @@ function formatDuration(seconds: number): string {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+type FeedMode = 'virtualcam' | 'screenshot';
+
 export default function CameraPage() {
   const obs = useObsStatus();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [feedMode, setFeedMode] = useState<FeedMode>('virtualcam');
+  const [vcError, setVcError] = useState<string | null>(null);
+
+  // Screenshot fallback state
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Poll OBS for screenshot frames when connected
+  // Try to connect to OBS Virtual Camera
+  const connectVirtualCam = useCallback(async () => {
+    try {
+      // Enumerate devices to find OBS Virtual Camera
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const obsDevice = devices.find(d =>
+        d.kind === 'videoinput' && d.label.toLowerCase().includes('obs virtual camera')
+      );
+
+      const constraints: MediaStreamConstraints = {
+        video: obsDevice
+          ? { deviceId: { exact: obsDevice.deviceId }, width: 1920, height: 1080 }
+          : { width: 1920, height: 1080 },
+        audio: false,
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      // Verify we actually got the OBS virtual camera (not just any webcam)
+      const track = stream.getVideoTracks()[0];
+      const label = track.label.toLowerCase();
+      if (!label.includes('obs') && obsDevice) {
+        // We asked for OBS but got something else — stop and fall back
+        stream.getTracks().forEach(t => t.stop());
+        throw new Error('OBS Virtual Camera not found');
+      }
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setVcError(null);
+      setFeedMode('virtualcam');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('Virtual Camera unavailable:', msg);
+      setVcError(msg);
+      setFeedMode('screenshot');
+    }
+  }, []);
+
+  // Clean up virtual camera stream
+  const disconnectVirtualCam = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
+  // Virtual camera lifecycle
   useEffect(() => {
-    if (!obs.connected) {
+    if (feedMode === 'virtualcam') {
+      connectVirtualCam();
+    }
+    return () => disconnectVirtualCam();
+  }, [feedMode, connectVirtualCam, disconnectVirtualCam]);
+
+  // Screenshot fallback polling (only when in screenshot mode and OBS connected)
+  useEffect(() => {
+    if (feedMode !== 'screenshot' || !obs.connected) {
       setPreviewSrc(null);
       setPreviewError(false);
       return;
@@ -41,7 +109,7 @@ export default function CameraPage() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [obs.connected]);
+  }, [feedMode, obs.connected]);
 
   const handleStart = async () => {
     try {
@@ -106,27 +174,51 @@ export default function CameraPage() {
       {/* OBS Preview */}
       <div className="panel p-2 xl:p-3">
         <div className="relative w-full aspect-video bg-board-dark rounded-lg overflow-hidden flex items-center justify-center">
-          {previewSrc ? (
+          {/* Virtual Camera — smooth real-time feed */}
+          {feedMode === 'virtualcam' && !vcError && (
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-contain"
+            />
+          )}
+
+          {/* Screenshot fallback */}
+          {feedMode === 'screenshot' && previewSrc && (
             <img
               src={previewSrc}
               alt="OBS Preview"
               className="w-full h-full object-contain"
             />
-          ) : obs.connected && previewError ? (
-            <div className="text-center px-4">
-              <p className="text-chalk-dim text-lg xl:text-2xl">Preview unavailable</p>
-              <p className="text-chalk-dim/60 text-sm xl:text-base mt-2">OBS is connected but screenshot capture failed. Check your OBS scene setup.</p>
-            </div>
-          ) : obs.connected ? (
-            <p className="text-chalk-dim text-lg xl:text-2xl">Loading preview...</p>
-          ) : (
+          )}
+
+          {/* Error / loading states */}
+          {feedMode === 'virtualcam' && vcError && !obs.connected && (
             <div className="text-center px-4">
               <p className="text-chalk-dim text-xl xl:text-3xl mb-2">No Preview</p>
-              <p className="text-chalk-dim/60 text-sm xl:text-lg">Start OBS Studio with WebSocket server enabled on port 4455</p>
+              <p className="text-chalk-dim/60 text-sm xl:text-lg">Start OBS Studio with Virtual Camera and WebSocket server enabled</p>
             </div>
           )}
+          {feedMode === 'virtualcam' && vcError && obs.connected && (
+            <div className="text-center px-4">
+              <p className="text-chalk-dim text-lg xl:text-2xl mb-2">Virtual Camera not available</p>
+              <p className="text-chalk-dim/60 text-sm xl:text-base">Using screenshot fallback. Enable OBS Virtual Camera for smooth live feed.</p>
+            </div>
+          )}
+          {feedMode === 'screenshot' && !previewSrc && obs.connected && !previewError && (
+            <p className="text-chalk-dim text-lg xl:text-2xl">Loading preview...</p>
+          )}
+          {feedMode === 'screenshot' && previewError && (
+            <div className="text-center px-4">
+              <p className="text-chalk-dim text-lg xl:text-2xl">Preview unavailable</p>
+              <p className="text-chalk-dim/60 text-sm xl:text-base mt-2">OBS is connected but screenshot capture failed.</p>
+            </div>
+          )}
+
           {/* Recording overlay */}
-          {obs.recording && previewSrc && (
+          {obs.recording && (feedMode === 'virtualcam' ? !vcError : previewSrc) && (
             <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/60 px-2 py-1 rounded">
               <span
                 className="w-2.5 h-2.5 rounded-full bg-loss"
@@ -136,6 +228,29 @@ export default function CameraPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Feed mode toggle */}
+      <div className="flex items-center gap-3 xl:gap-4">
+        <button
+          onClick={() => setFeedMode('virtualcam')}
+          className={`btn-press py-2 xl:py-3 px-4 xl:px-6 panel text-sm xl:text-lg font-semibold min-h-[40px] xl:min-h-[56px] ${
+            feedMode === 'virtualcam' ? '!border-gold text-gold' : 'text-chalk-dim'
+          }`}
+        >
+          Virtual Camera
+        </button>
+        <button
+          onClick={() => { disconnectVirtualCam(); setFeedMode('screenshot'); }}
+          className={`btn-press py-2 xl:py-3 px-4 xl:px-6 panel text-sm xl:text-lg font-semibold min-h-[40px] xl:min-h-[56px] ${
+            feedMode === 'screenshot' ? '!border-gold text-gold' : 'text-chalk-dim'
+          }`}
+        >
+          Screenshot
+        </button>
+        {feedMode === 'virtualcam' && vcError && (
+          <span className="text-chalk-dim/60 text-sm xl:text-base">Enable Virtual Camera in OBS: Tools &gt; Start Virtual Camera</span>
+        )}
       </div>
 
       {/* Controls */}
