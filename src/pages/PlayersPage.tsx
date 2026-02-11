@@ -10,14 +10,7 @@ import {
   updatePlayerEmoji,
 } from '../db/services';
 import VirtualKeyboard from '../components/VirtualKeyboard';
-
-const EMOJI_OPTIONS = [
-  '\uD83C\uDFB1', '\uD83E\uDD48', '\uD83C\uDFC6', '\uD83D\uDD25', '\u2B50',
-  '\uD83D\uDC51', '\uD83E\uDD85', '\uD83E\uDD88', '\uD83D\uDC3B', '\uD83D\uDC3A',
-  '\uD83E\uDD81', '\uD83D\uDC22', '\uD83D\uDC0D', '\uD83E\uDD89', '\uD83E\uDD8A',
-  '\uD83D\uDC35', '\uD83D\uDC2F', '\uD83D\uDC32', '\uD83D\uDE80', '\u26A1',
-  '\uD83C\uDFAF', '\uD83C\uDFA9', '\uD83D\uDC80', '\uD83E\uDD16', '\uD83D\uDC7B',
-];
+import EmojiPicker, { type EmojiClickData } from 'emoji-picker-react';
 
 export default function PlayersPage() {
   const [activePlayers, setActivePlayers] = useState<Player[]>([]);
@@ -28,6 +21,8 @@ export default function PlayersPage() {
   const [editingEmojiId, setEditingEmojiId] = useState<number | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [renameEmoji, setRenameEmoji] = useState<string>('\uD83C\uDFB1');
+  const [showEmojiPicker, setShowEmojiPicker] = useState<'add' | 'rename' | 'edit' | null>(null);
   const [confirmArchiveId, setConfirmArchiveId] = useState<number | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
@@ -62,7 +57,12 @@ export default function PlayersPage() {
   async function handleRename(id: number) {
     const trimmed = renameValue.trim();
     if (!trimmed) return;
+    const player = activePlayers.find(p => p.id === id);
+    const originalEmoji = player?.emoji || '\uD83C\uDFB1';
     await renamePlayer(id, trimmed);
+    if (renameEmoji !== originalEmoji) {
+      await updatePlayerEmoji(id, renameEmoji);
+    }
     setRenamingId(null);
     setRenameValue('');
     refresh();
@@ -100,10 +100,7 @@ export default function PlayersPage() {
           <label className="block text-chalk-dim text-sm xl:text-lg mb-2 xl:mb-3 uppercase tracking-wider">Player name</label>
           <div className="flex items-center gap-3 xl:gap-4 mb-3">
             <button
-              onClick={() => {
-                const idx = EMOJI_OPTIONS.indexOf(newEmoji);
-                setNewEmoji(EMOJI_OPTIONS[(idx + 1) % EMOJI_OPTIONS.length]);
-              }}
+              onClick={() => setShowEmojiPicker(showEmojiPicker === 'add' ? null : 'add')}
               className="btn-press w-14 h-14 xl:w-20 xl:h-20 rounded-lg bg-board-dark border border-board-light text-3xl xl:text-5xl flex items-center justify-center shrink-0"
             >
               {newEmoji}
@@ -125,19 +122,21 @@ export default function PlayersPage() {
               className="flex-1 px-4 py-3 xl:px-6 xl:py-5 rounded-lg bg-board-dark border border-board-light text-chalk text-lg xl:text-2xl placeholder-chalk-dim"
             />
           </div>
-          <div className="flex flex-wrap gap-2 xl:gap-3 mb-3">
-            {EMOJI_OPTIONS.map((e) => (
-              <button
-                key={e}
-                onClick={() => setNewEmoji(e)}
-                className={`btn-press w-10 h-10 xl:w-14 xl:h-14 rounded-lg text-xl xl:text-3xl flex items-center justify-center ${
-                  newEmoji === e ? 'bg-gold/20 border-2 border-gold' : 'bg-board-dark border border-board-light/30'
-                }`}
-              >
-                {e}
-              </button>
-            ))}
-          </div>
+          {showEmojiPicker === 'add' && (
+            <div className="mb-3">
+              <EmojiPicker
+                onEmojiClick={(emojiData: EmojiClickData) => {
+                  setNewEmoji(emojiData.emoji);
+                  setShowEmojiPicker(null);
+                }}
+                theme={'dark' as const}
+                width="100%"
+                height={350}
+                searchPlaceholder="Search emojis..."
+                lazyLoadEmojis
+              />
+            </div>
+          )}
           <VirtualKeyboard
             value={newName}
             onChange={setNewName}
@@ -145,6 +144,7 @@ export default function PlayersPage() {
             onCancel={() => {
               setShowAddForm(false);
               setNewName('');
+              setShowEmojiPicker(null);
             }}
           />
         </div>
@@ -170,24 +170,48 @@ export default function PlayersPage() {
             key={player.id}
             className="panel p-4 xl:p-6"
           >
-            {/* Rename mode */}
+            {/* Rename/edit mode */}
             {renamingId === player.id ? (
               <div>
-                <input
-                  type="text"
-                  inputMode="none"
-                  autoFocus
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleRename(player.id!);
-                    if (e.key === 'Escape') {
-                      setRenamingId(null);
-                      setRenameValue('');
-                    }
-                  }}
-                  className="w-full px-4 py-3 xl:px-6 xl:py-5 rounded-lg bg-board-dark border border-board-light text-chalk text-lg xl:text-2xl placeholder-chalk-dim"
-                />
+                <div className="flex items-center gap-3 xl:gap-4 mb-3">
+                  <button
+                    onClick={() => setShowEmojiPicker(showEmojiPicker === 'rename' ? null : 'rename')}
+                    className="btn-press w-14 h-14 xl:w-20 xl:h-20 rounded-lg bg-board-dark border border-board-light text-3xl xl:text-5xl flex items-center justify-center shrink-0"
+                  >
+                    {renameEmoji}
+                  </button>
+                  <input
+                    type="text"
+                    inputMode="none"
+                    autoFocus
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleRename(player.id!);
+                      if (e.key === 'Escape') {
+                        setRenamingId(null);
+                        setRenameValue('');
+                        setShowEmojiPicker(null);
+                      }
+                    }}
+                    className="flex-1 px-4 py-3 xl:px-6 xl:py-5 rounded-lg bg-board-dark border border-board-light text-chalk text-lg xl:text-2xl placeholder-chalk-dim"
+                  />
+                </div>
+                {showEmojiPicker === 'rename' && (
+                  <div className="mb-3">
+                    <EmojiPicker
+                      onEmojiClick={(emojiData: EmojiClickData) => {
+                        setRenameEmoji(emojiData.emoji);
+                        setShowEmojiPicker(null);
+                      }}
+                      theme={'dark' as const}
+                      width="100%"
+                      height={350}
+                      searchPlaceholder="Search emojis..."
+                      lazyLoadEmojis
+                    />
+                  </div>
+                )}
                 <VirtualKeyboard
                   value={renameValue}
                   onChange={setRenameValue}
@@ -195,6 +219,7 @@ export default function PlayersPage() {
                   onCancel={() => {
                     setRenamingId(null);
                     setRenameValue('');
+                    setShowEmojiPicker(null);
                   }}
                 />
               </div>
@@ -239,8 +264,10 @@ export default function PlayersPage() {
                       onClick={() => {
                         setRenamingId(player.id!);
                         setRenameValue(player.name);
+                        setRenameEmoji(player.emoji || '\uD83C\uDFB1');
                         setConfirmArchiveId(null);
                         setEditingEmojiId(null);
+                        setShowEmojiPicker(null);
                       }}
                       className="btn-press min-h-[64px] xl:min-h-[96px] min-w-[64px] xl:min-w-[96px] px-4 xl:px-6 rounded-lg bg-board-light text-chalk-dim font-semibold text-base xl:text-xl border border-board-light"
                     >
@@ -259,18 +286,17 @@ export default function PlayersPage() {
                   </div>
                 </div>
                 {editingEmojiId === player.id && (
-                  <div className="flex flex-wrap gap-2 xl:gap-3 pt-1 pb-1">
-                    {EMOJI_OPTIONS.map((e) => (
-                      <button
-                        key={e}
-                        onClick={() => handleEmojiChange(player.id!, e)}
-                        className={`btn-press w-10 h-10 xl:w-14 xl:h-14 rounded-lg text-xl xl:text-3xl flex items-center justify-center ${
-                          (player.emoji || '\uD83C\uDFB1') === e ? 'bg-gold/20 border-2 border-gold' : 'bg-board-dark border border-board-light/30'
-                        }`}
-                      >
-                        {e}
-                      </button>
-                    ))}
+                  <div className="pt-2 pb-1">
+                    <EmojiPicker
+                      onEmojiClick={(emojiData: EmojiClickData) => {
+                        handleEmojiChange(player.id!, emojiData.emoji);
+                      }}
+                      theme={'dark' as const}
+                      width="100%"
+                      height={350}
+                      searchPlaceholder="Search emojis..."
+                      lazyLoadEmojis
+                    />
                   </div>
                 )}
               </div>
