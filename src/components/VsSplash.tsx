@@ -19,7 +19,7 @@ export default function VsSplash({ player1, player2, h2h, onDismiss }: VsSplashP
   };
 
   useEffect(() => {
-    const timer = setTimeout(dismiss, 3500);
+    const timer = setTimeout(dismiss, 7000);
     return () => clearTimeout(timer);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
