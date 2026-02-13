@@ -1,13 +1,6 @@
-const CACHE_NAME = 'rackup-pwa-v1';
-const PRECACHE_URLS = [
-  './',
-  './index.html',
-];
+const CACHE_NAME = 'rackup-pwa-v2';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
-  );
   self.skipWaiting();
 });
 
@@ -28,8 +21,28 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
-  // Cache-first for app shell
+  // Network-first for navigation (index.html) so new deploys are picked up immediately
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+  // Cache-first for hashed assets (filenames change on each build)
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(event.request).then((response) => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        return response;
+      });
+    })
   );
 });
