@@ -143,11 +143,15 @@ interface OverlayMatchEvent {
     playerA: {
       id: string;
       name: string;
+      nickname?: string;   // optional display nickname (shown in italics)
+      emoji?: string;      // optional player emoji
       score: number;       // frames won in this session head-to-head
     };
     playerB: {
       id: string;
       name: string;
+      nickname?: string;
+      emoji?: string;
       score: number;
     };
     sessionDate: string;   // ISO date string
@@ -191,10 +195,11 @@ When the overlay page first loads (or when OBS refreshes the browser source), it
 {
   "visible": true,
   "isRecording": true,
-  "playerA": { "id": "p1", "name": "Paddy", "score": 3 },
+  "playerA": { "id": "p1", "name": "Paddy", "nickname": "The Shark", "emoji": "🦈", "score": 3 },
   "playerB": { "id": "p2", "name": "Mick", "score": 1 },
   "sessionDate": "2025-08-15",
-  "frameNumber": 7
+  "frameNumber": 7,
+  "lastWinnerId": null
 }
 ```
 
@@ -216,7 +221,7 @@ The overlay is added to OBS as a **Browser Source** with the following settings:
 
 | Setting | Value |
 |---|---|
-| URL | `http://localhost:3000/overlay` |
+| URL | `http://localhost:4077/overlay` |
 | Width | `1920` |
 | Height | `1080` |
 | FPS | `30` |
@@ -239,7 +244,7 @@ No other sources are needed for basic recording.
 
 During initial setup, the RackUp Server can optionally configure OBS programmatically via the OBS WebSocket API:
 - Create the scene if it doesn't exist.
-- Add the browser source pointed to `http://localhost:3000/overlay`.
+- Add the browser source pointed to `http://localhost:4077/overlay`.
 - Set the correct dimensions and layering.
 
 This is a nice-to-have for first-time setup; manual configuration is also straightforward (see §5.1).
@@ -344,11 +349,19 @@ The overlay updates are triggered by actions in the main RackUp application flow
 ### 7.3 Overlay State Object
 
 ```typescript
+interface OverlayPlayer {
+  id: string;
+  name: string;
+  nickname?: string;   // optional display nickname
+  emoji?: string;      // optional player emoji
+  score: number;
+}
+
 interface OverlayState {
   visible: boolean;
   isRecording: boolean;
-  playerA: { id: string; name: string; score: number } | null;
-  playerB: { id: string; name: string; score: number } | null;
+  playerA: OverlayPlayer | null;
+  playerB: OverlayPlayer | null;
   sessionDate: string | null;
   frameNumber: number;
   lastWinnerId: string | null;  // used to trigger highlight animation
@@ -376,7 +389,7 @@ An alternative theme that matches the RackUp main UI aesthetic:
 ### 8.3 Theme Configuration
 
 - The overlay theme is configurable in RackUp's settings page.
-- The theme name is passed as a query parameter to the overlay URL: `http://localhost:3000/overlay?theme=broadcast` or `http://localhost:3000/overlay?theme=chalkboard`.
+- The theme name is passed as a query parameter to the overlay URL: `http://localhost:4077/overlay?theme=broadcast` or `http://localhost:4077/overlay?theme=chalkboard`.
 - Themes are defined as CSS custom properties (variables) at the top of the overlay stylesheet, making it easy to add new themes later.
 
 ```css
@@ -430,10 +443,10 @@ There are two approaches to getting the OBS camera feed into the RackUp UI:
 ### 9.2 PiP Component (Session Screen)
 
 - **Size**: approximately 320×180px (16:9, ~15–18% of screen width on a 1920px display).
-- **Position**: bottom-right corner of the session screen, 16px margin from edges.
+- **Position**: top-right corner of the session screen, 8–16px margin from edges.
 - **Border**: 2px solid `rgba(255, 255, 255, 0.2)`, rounded corners 8px.
 - **Drop shadow**: subtle, to lift it off the scoreboard background.
-- **Overlay badge**: a small "LIVE" or "REC" indicator in the top-left corner of the PiP when recording is active.
+- **Overlay badge**: a small pulsing red dot in the top-right corner of the PiP when recording is active.
 - **Interaction**: tapping the PiP navigates to the Camera tab.
 - The PiP shows the composited output (camera + scorebug), so the user can verify the overlay looks correct without switching tabs.
 
@@ -480,19 +493,19 @@ The overlay-related code should be organised within the RackUp project as follow
 ```
 rackup/
 ├── server/
-│   ├── routes/
-│   │   └── overlay.ts          # Serves /overlay page, /api/overlay/* endpoints
-│   ├── services/
-│   │   └── overlayState.ts     # In-memory overlay state + SSE broadcast logic
-│   └── ...
+│   └── src/
+│       ├── index.ts            # Express API — serves /overlay, /api/overlay/*, recording, VAR endpoints
+│       ├── obs.ts              # OBS WebSocket client (recording control, file naming)
+│       ├── overlayState.ts     # In-memory overlay state + SSE broadcast logic
+│       └── config.ts           # Server configuration (OBS host/port, paths)
 ├── overlay/
-│   ├── overlay.html            # The standalone overlay page served to OBS
-│   ├── overlay.css             # Overlay styles (or inlined into HTML)
-│   └── overlay.js              # SSE client, DOM update logic (or inlined)
-├── frontend/
-│   ├── components/
-│   │   ├── PiPPreview.tsx      # PiP component for session screen
-│   │   └── CameraTab.tsx       # Full camera view tab
+│   └── overlay.html            # Standalone overlay page served to OBS (HTML/CSS/JS all inlined)
+├── src/
+│   ├── pages/
+│   │   ├── HomePage.tsx        # Session screen with inline PiP preview
+│   │   └── CameraPage.tsx      # Full camera view tab with manual recording controls
+│   ├── hooks/
+│   │   └── useObsStatus.ts     # OBS connection + recording status hook
 │   └── ...
 └── ...
 ```

@@ -75,12 +75,13 @@ The app must be extremely simple to operate, visually clear, and run fullscreen 
 ### 3.3 Video Recording Per Frame (Automatic)
 - Video recording is managed **per frame**, not per session. A session may last 6–8 hours; individual frame recordings are typically 5–30 minutes each.
 - Recording behaviour is controlled by a **"Recording Enabled" toggle** on the home/session screen. This is a prominent, clearly labelled checkbox or switch.
-- **When recording is enabled**, the lifecycle is fully automatic:
-  1. **Recording starts automatically** when the next frame begins — i.e., immediately after the previous frame result is recorded (the user taps the winner of the last frame, that recording stops, and a new recording starts immediately for the next frame).
-  2. **For the very first frame of a session**, recording starts when the session begins (or when the first "Now Playing" matchup is selected).
-  3. The session screen shows a visible **recording indicator** (e.g., a red dot / "REC" badge) so everyone knows the camera is rolling.
-  4. **When the frame ends**: the user taps the winner. RackUp **automatically stops** the current recording and **immediately starts** a new recording for the next frame. This is a single user action (tapping the winner) that triggers both stop and start.
-  5. When the session ends (or recording is toggled off), the current recording is stopped.
+- **When recording is enabled**, the lifecycle is semi-automatic with a "Ready to Play" gate:
+  1. **When the frame ends**: the user taps the winner. RackUp **automatically stops** the current recording.
+  2. A **VS splash screen** appears showing the next matchup with a **"Ready to Play"** button. This gives players time to rack the balls without recording dead time.
+  3. **Recording starts** when the user taps "Ready to Play". This ensures recordings capture only actual gameplay.
+  4. **For the very first frame of a session**, the same flow applies: VS splash appears, recording starts on "Ready to Play".
+  5. The session screen shows a visible **recording indicator** (pulsing red dot + "REC" badge) so everyone knows the camera is rolling.
+  6. When the session ends (or recording is toggled off), the current recording is stopped.
 - **When recording is disabled** (toggle unchecked), no OBS commands are sent. Scoring works exactly the same, just without video. Toggling recording off mid-session should cleanly stop any active recording.
 - The user should be able to toggle recording on/off at any point during a session without disrupting the scoring flow.
 - If OBS is unavailable when recording is enabled, show a warning but do not block scoring (see §8.1).
@@ -153,7 +154,7 @@ The app must be extremely simple to operate, visually clear, and run fullscreen 
   - **No active session**: prominent "New Session" button, today's date, quick-glance monthly leaderboard.
   - **Active session**: the live session scoreboard (as described in §2.2), with navigation to History/Stats accessible but unobtrusive.
 - **Recording toggle**: a clearly labelled "Recording Enabled" switch is always visible on the session screen. When checked, automatic per-frame recording is active. When unchecked, no recordings are made. Default state should be configurable in settings.
-- **OBS Preview (Picture-in-Picture)**: a small live preview window showing the current OBS output is displayed in the **bottom-right corner** of the session screen. This gives the players a quick glance of what the camera sees without leaving the scoreboard view. The preview should:
+- **OBS Preview (Picture-in-Picture)**: a small live preview window showing the current OBS output is displayed in the **top-right corner** of the session screen. This gives the players a quick glance of what the camera sees without leaving the scoreboard view. The preview should:
   - Be unobtrusive — small enough not to interfere with the scoreboard layout (roughly 15–20% of screen width).
   - Show a live feed from OBS (via the OBS WebSocket virtual cam output, or a browser source rendering the OBS preview).
   - Be clearly bordered/framed so it's visually distinct from the scoreboard UI.
@@ -189,10 +190,9 @@ The app must be extremely simple to operate, visually clear, and run fullscreen 
 ## 6. Data & Storage
 
 ### 6.1 Persistence
-- All data is stored in a SQLite database on the mini PC's local SSD.
-- The database file should be located in a known, backed-up directory (e.g., `~/rackup/data/rackup.db`).
-- All writes are immediately committed. The app must survive power loss without data corruption (SQLite WAL mode recommended).
-- Internet connectivity is not required for any core functionality.
+- All data is stored in Supabase (PostgreSQL). The app was originally specced for SQLite but was implemented with Supabase for ease of deployment and real-time capabilities.
+- All writes are immediately committed. The app must survive power loss without data corruption.
+- The app requires internet connectivity to reach the Supabase backend.
 
 ### 6.2 Video File Management
 - Recorded video files are stored in a configurable recordings directory (e.g., `~/rackup/recordings/`).
@@ -201,11 +201,12 @@ The app must be extremely simple to operate, visually clear, and run fullscreen 
 - A "Recordings" screen in the UI lists all recorded frames with player names, date/time, duration, and file size.
 - Nice-to-have: in-browser video playback of recorded frames directly from the RackUp UI.
 
-### 6.2 Data Model (Conceptual)
-- **Player**: id, name, created_at, archived (boolean).
+### 6.2 Data Model (Current Implementation)
+- **Player**: id, name, emoji (nullable), nickname (nullable), created_at, archived (boolean).
 - **Session**: id, date, started_at, ended_at (nullable if active), player_ids (participants).
-- **Frame**: id, session_id, winner_id, loser_id, recorded_at, video_file_path (nullable), recording_started_at (nullable), recording_ended_at (nullable).
-- **Recording**: id, frame_id (nullable — allows orphan recordings), file_path, file_size, duration_seconds, player_a_id, player_b_id, created_at, uploaded (boolean), upload_url (nullable).
+- **Frame**: id, session_id, winner_id, loser_id, recorded_at, started_at (nullable — when the frame began), video_file_path (nullable).
+- **PlayerAchievement**: player_id, achievement_id, unlocked_at (tracks which badges each player has earned).
+- Note: Recordings are managed as files on disk with metadata derived from file naming conventions, rather than a separate database table.
 
 ### 6.5 Backup & Export
 - An "Export Data" button in settings that downloads all scoring data as a JSON or CSV file.
@@ -221,13 +222,14 @@ The app must be extremely simple to operate, visually clear, and run fullscreen 
 - Must run in Chromium-based browsers (Chrome, Chromium on Raspberry Pi).
 - Designed to run in fullscreen/kiosk mode.
 
-### 7.2 Technology Stack (Recommended)
-- **Frontend**: React with TypeScript.
-- **Styling**: Tailwind CSS.
-- **Backend**: Node.js (Express or Fastify) running locally on the mini PC.
-- **Database**: SQLite via better-sqlite3 (server-side, more robust than IndexedDB for a system with a backend).
+### 7.2 Technology Stack (As Implemented)
+- **Frontend**: React 19 with TypeScript.
+- **Styling**: Tailwind CSS 4.
+- **Backend**: Node.js (Express) running locally on the mini PC.
+- **Database**: Supabase (PostgreSQL) — cloud-hosted.
 - **OBS Integration**: obs-websocket-js (Node.js client for the OBS WebSocket protocol v5).
-- **Build tool**: Vite (frontend), tsx or ts-node (backend).
+- **Build tool**: Vite 7 (frontend).
+- **Testing**: Vitest.
 - **Process manager**: PM2 or systemd to keep the backend running on boot.
 
 ### 7.3 Architecture
@@ -241,17 +243,23 @@ The app must be extremely simple to operate, visually clear, and run fullscreen 
 ```
 ┌──────────────────┐   REST API    ┌──────────────────┐  OBS WebSocket  ┌──────────┐
 │   RackUp UI      │◄────────────►│  RackUp Server   │◄──────────────►│   OBS    │
-│   (Chromium      │  localhost    │  (Node.js)       │  localhost      │  Studio  │
-│   fullscreen)    │              │                  │  :4455          │          │
+│   (Chromium      │  localhost    │  (Node.js/Express)│  localhost      │  Studio  │
+│   fullscreen)    │  :5173/:4077 │                  │  :4455          │          │
 │                  │              │  - REST API      │                 │  - Webcam│
-│   Touchscreen    │              │  - SQLite DB     │                 │  - Encode│
+│   Touchscreen    │              │  - SSE overlay   │                 │  - Encode│
 │   Display        │              │  - File mgmt     │                 │  - Record│
 └──────────────────┘              └──────────────────┘                 └──────────┘
-                                         │
-                                    ┌────┴─────┐
-                                    │ /recordings │
-                                    │ (local SSD) │
-                                    └──────────┘
+         │                               │
+         │  Supabase API            ┌────┴─────┐
+         ▼                          │ /recordings │
+┌──────────────────┐                │ (local SSD) │
+│   Supabase       │                └──────────┘
+│   (PostgreSQL)   │
+│   - Players      │
+│   - Sessions     │
+│   - Frames       │
+│   - Achievements │
+└──────────────────┘
 ```
 
 ### 7.4 Stream Deck Fallback
@@ -266,7 +274,7 @@ The app must be extremely simple to operate, visually clear, and run fullscreen 
 - On boot, the mini PC should automatically:
   1. Start OBS Studio (minimised/headless).
   2. Start the RackUp Server (via PM2 or systemd).
-  3. Launch Chromium in kiosk mode pointing to `http://localhost:3000`.
+  3. Launch Chromium in kiosk mode pointing to `http://localhost:5173/RackUp/` (dev) or the built static files.
 - The entire startup sequence should be automated so the user just powers on the device and everything is ready.
 
 ### 7.6 Performance
@@ -299,15 +307,18 @@ The app must be extremely simple to operate, visually clear, and run fullscreen 
 
 ---
 
-## 9. Future Enhancements (Out of Scope for V1, But Design With Them in Mind)
+## 9. Future Enhancements
 
+### Implemented (originally out of scope, now shipped)
+- ~~**Video playback in UI**~~: browse and play back recorded frames directly from the Recordings tab. ✅
+- ~~**Photo/avatar support**~~: players have custom emojis and optional nicknames. ✅
+- ~~**Achievement badges**~~: 21 unlockable badges for milestones, streaks, rivalries, session moments, and monthly feats. ✅
+- ~~**Sound effects**~~: win sounds, streak fanfares, VS splash audio, session end fanfare. ✅
+
+### Still planned
 - **Automatic upload**: after a session ends (or on a schedule), automatically upload recordings to YouTube (unlisted), Google Drive, a NAS, or another cloud service. Tag uploads with player names and session metadata.
-- **Video playback in UI**: browse and play back recorded frames directly from the RackUp stats/history screens.
-- **Photo/avatar support** for players.
 - **Game type support**: different pool variants (8-ball, 9-ball, killer, etc.) tracked separately.
 - **Handicap system**: assign handicaps to balance matchups between players of different skill levels.
-- **Achievement badges**: fun milestones like "10-win streak", "100 frames played", "Giant killer" (beating the top-ranked player).
-- **Sound effects**: optional satisfying sounds when recording frames.
 - **Multi-device sync**: if a second device (e.g., a phone) is ever used, data could sync via the local server API.
 - **Home Assistant integration**: display current session status on an HA dashboard, or trigger automations (e.g., turn on the table light when a session starts).
 - **Printable reports**: generate a monthly/yearly summary as a PDF.
