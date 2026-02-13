@@ -5,6 +5,7 @@ import {
   type LeaderboardEntry,
 } from '@shared/db/services';
 import type { Session } from '@shared/db/supabase';
+import { ACHIEVEMENTS, getUnlockedForPlayer, isCacheLoaded, loadAchievementsCache } from '@shared/utils/achievements';
 import PlayerName from '@shared/components/PlayerName';
 
 type TimePeriod = 'month' | 'year' | 'alltime';
@@ -33,9 +34,13 @@ export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [achReady, setAchReady] = useState(isCacheLoaded());
 
   useEffect(() => {
     getAllSessions().then(setSessions);
+    if (!achReady) {
+      loadAchievementsCache().then(() => setAchReady(true));
+    }
   }, []);
 
   useEffect(() => {
@@ -150,6 +155,9 @@ export default function LeaderboardPage() {
               : rank === 2 ? 'text-silver'
               : rank === 3 ? 'text-bronze'
               : 'text-chalk-dim';
+            const badgeCount = achReady
+              ? getUnlockedForPlayer(entry.playerId).length
+              : 0;
 
             return (
               <div
@@ -159,10 +167,17 @@ export default function LeaderboardPage() {
                 <span className={`w-7 text-center shrink-0 font-black score-num text-lg ${rankColor} ${isChampion ? 'glow-gold' : ''}`}>
                   {rank}
                 </span>
-                <PlayerName
-                  name={entry.playerName}
-                  className={`flex-1 ml-2 text-chalk font-bold text-base truncate chalk-text ${isChampion ? 'glow-gold' : ''}`}
-                />
+                <div className={`flex-1 ml-2 flex items-center gap-1.5 min-w-0 ${isChampion ? 'glow-gold' : ''}`}>
+                  <PlayerName
+                    name={entry.playerName}
+                    className="text-chalk font-bold text-base truncate chalk-text"
+                  />
+                  {badgeCount > 0 && (
+                    <span className="shrink-0 text-[10px] font-bold text-gold/80 bg-gold/10 border border-gold/20 rounded-full px-1.5 py-0.5 leading-none">
+                      {badgeCount}/{ACHIEVEMENTS.length}
+                    </span>
+                  )}
+                </div>
                 <span className="w-10 text-center shrink-0 text-win font-black score-num text-lg">
                   {entry.framesWon}
                 </span>
