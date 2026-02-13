@@ -1038,35 +1038,40 @@ export default function HomePage() {
               );
             })()}
 
-            {/* Frame flags — tag the current recording */}
-            {recordingEnabled && obsStatus.recording && (
-              <div className="flex items-center gap-2 xl:gap-3 mt-2 xl:mt-3">
-                {ALL_FLAGS.map((flag) => {
-                  const cfg = FLAG_CONFIG[flag];
-                  const active = currentFrameFlags.includes(flag);
-                  return (
-                    <button
-                      key={`${flag}-${flagPopKey}`}
-                      onClick={() => {
-                        setCurrentFrameFlags(prev =>
-                          prev.includes(flag)
-                            ? prev.filter(f => f !== flag)
-                            : [...prev, flag],
-                        );
-                        setFlagPopKey(k => k + 1);
-                      }}
-                      className={`btn-press text-sm xl:text-lg font-semibold px-3 xl:px-5 py-1.5 xl:py-2 rounded-full transition-all min-h-[36px] xl:min-h-[44px] flag-pop ${
-                        active
-                          ? `${cfg.bg} ${cfg.text}`
-                          : 'bg-white/5 text-chalk-dim/40'
-                      }`}
-                    >
-                      {cfg.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            {/* Frame flags */}
+            {(() => {
+              const visibleFlags = recordingEnabled && obsStatus.recording
+                ? ALL_FLAGS
+                : ['brush' as FlagKey];
+              return (
+                <div className="flex items-center gap-2 xl:gap-3 mt-2 xl:mt-3">
+                  {visibleFlags.map((flag) => {
+                    const cfg = FLAG_CONFIG[flag];
+                    const active = currentFrameFlags.includes(flag);
+                    return (
+                      <button
+                        key={`${flag}-${flagPopKey}`}
+                        onClick={() => {
+                          setCurrentFrameFlags(prev =>
+                            prev.includes(flag)
+                              ? prev.filter(f => f !== flag)
+                              : [...prev, flag],
+                          );
+                          setFlagPopKey(k => k + 1);
+                        }}
+                        className={`btn-press text-sm xl:text-lg font-semibold px-3 xl:px-5 py-1.5 xl:py-2 rounded-full transition-all min-h-[36px] xl:min-h-[44px] flag-pop ${
+                          active
+                            ? `${cfg.bg} ${cfg.text}`
+                            : 'bg-white/5 text-chalk-dim/40'
+                        }`}
+                      >
+                        {cfg.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* Next up queue */}
             {challengerQueue.length > 0 && (
