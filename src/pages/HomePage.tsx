@@ -88,6 +88,14 @@ export default function HomePage() {
   const [flagPopKey, setFlagPopKey] = useState(0);
   const frameStartedAt = useRef<Date | null>(null);
 
+  // ── Self-update state ──
+  const [updatesAvailable, setUpdatesAvailable] = useState(0);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateRunning, setUpdateRunning] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<{ step: string; status?: string; output?: string; error?: string; newVersion?: string; success?: boolean }[]>([]);
+  const [liveVersion, setLiveVersion] = useState(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev');
+
   // ── Data ──
 
   const {
@@ -122,6 +130,58 @@ export default function HomePage() {
     window.addEventListener('rackup-recording-changed', handler);
     return () => window.removeEventListener('rackup-recording-changed', handler);
   }, []);
+
+  // ── Self-update: check on mount (delayed) ──
+  const checkForUpdates = useCallback(async () => {
+    setUpdateChecking(true);
+    try {
+      const res = await fetch('/api/version');
+      if (res.ok) {
+        const data = await res.json();
+        setLiveVersion(data.current);
+        setUpdatesAvailable(data.updatesAvailable);
+      }
+    } catch { /* offline */ }
+    finally { setUpdateChecking(false); }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(checkForUpdates, 5000);
+    return () => clearTimeout(t);
+  }, [checkForUpdates]);
+
+  const doUpdate = useCallback(async () => {
+    setUpdateRunning(true);
+    setUpdateProgress([]);
+    try {
+      const res = await fetch('/api/update', { method: 'POST' });
+      const reader = res.body?.getReader();
+      if (!reader) return;
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line);
+            setUpdateProgress(prev => [...prev, msg]);
+            if (msg.success) {
+              setLiveVersion(msg.newVersion ?? liveVersion);
+              setUpdatesAvailable(0);
+              setTimeout(() => window.location.reload(), 3000);
+            }
+          } catch { /* skip */ }
+        }
+      }
+    } catch {
+      setUpdateProgress(prev => [...prev, { step: 'Error', status: 'error', error: 'Network error during update' }]);
+    } finally { setUpdateRunning(false); }
+  }, [liveVersion]);
 
   // Persist recording toggle + start/stop OBS if mid-session
   const toggleRecording = useCallback(async () => {
@@ -815,7 +875,16 @@ export default function HomePage() {
       {/* ── Header Bar ── */}
       <div className="panel-wood !rounded-none !border-x-0 !border-t-0 border-b-2 border-trim-light px-4 py-3 xl:px-8 xl:py-5 2xl:px-10 2xl:py-6 flex items-center flex-shrink-0 relative">
         <div className="flex items-center gap-3 xl:gap-5">
-          <span className="bg-gold text-board-dark font-black text-sm xl:text-xl 2xl:text-2xl px-2 py-1 xl:px-4 xl:py-2 rounded">8 BALL</span>
+          <button
+            onClick={() => setShowUpdateModal(true)}
+            className={`btn-press font-black text-sm xl:text-xl 2xl:text-2xl px-2 py-1 xl:px-4 xl:py-2 rounded transition-colors ${
+              updatesAvailable > 0
+                ? 'bg-gold text-board-dark update-glow'
+                : 'bg-gold text-board-dark'
+            }`}
+          >
+            {updatesAvailable > 0 ? 'UPDATE' : '8 BALL'}
+          </button>
         </div>
         <h1 className="font-display text-chalk text-xl xl:text-3xl 2xl:text-4xl tracking-wide chalk-text absolute left-1/2 -translate-x-1/2">THE CUEMANS ARCH</h1>
 
@@ -1339,6 +1408,84 @@ export default function HomePage() {
           }}
         />
       )}
+
+      {/* ── Update Modal ── */}
+      {showUpdateModal && (() => {
+        const lastMsg = updateProgress[updateProgress.length - 1];
+        const updateDone = lastMsg?.success === true;
+        const updateError = lastMsg?.status === 'error';
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+            onClick={() => !updateRunning && setShowUpdateModal(false)}
+          >
+            <div
+              className="panel mx-4 w-full max-w-md p-6 xl:p-8 space-y-4"
+              onClick={e => e.stopPropagation()}
+            >
+              <h2 className="text-chalk text-xl xl:text-2xl font-display font-bold">System Update</h2>
+
+              <div className="space-y-1 text-sm xl:text-base">
+                <p className="text-chalk-dim">
+                  Version: <span className="text-chalk font-mono">{liveVersion}</span>
+                </p>
+                <p className="text-chalk-dim">
+                  {updatesAvailable > 0
+                    ? <span className="text-gold">{updatesAvailable} update{updatesAvailable > 1 ? 's' : ''} available</span>
+                    : 'Up to date'}
+                </p>
+              </div>
+
+              {updateProgress.length > 0 && (
+                <div className="bg-board-dark/80 border border-chalk-dim/20 rounded p-3 max-h-48 overflow-y-auto text-xs xl:text-sm font-mono space-y-1">
+                  {updateProgress.map((msg, i) => (
+                    <div key={i} className={msg.status === 'error' ? 'text-loss' : msg.status === 'done' ? 'text-win' : 'text-chalk-dim'}>
+                      {msg.output ? msg.output.trim() : msg.error ? `Error: ${msg.error}` : `${msg.step}...`}
+                    </div>
+                  ))}
+                  {updateDone && <div className="text-gold mt-2">Update complete — reloading...</div>}
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={checkForUpdates}
+                  disabled={updateChecking || updateRunning}
+                  className="btn-press flex-1 py-3 xl:py-4 text-sm xl:text-base font-display font-bold text-chalk border border-chalk-dim/30 rounded bg-trim/50 hover:bg-trim disabled:opacity-40 transition-colors"
+                >
+                  {updateChecking ? 'Checking...' : 'Check for Updates'}
+                </button>
+                {updatesAvailable > 0 && !updateDone && (
+                  <button
+                    onClick={doUpdate}
+                    disabled={updateRunning}
+                    className="btn-press flex-1 py-3 xl:py-4 text-sm xl:text-base font-display font-bold text-board-dark rounded bg-gold hover:bg-gold/80 disabled:opacity-40 transition-colors"
+                  >
+                    {updateRunning ? 'Updating...' : 'Update Now'}
+                  </button>
+                )}
+              </div>
+
+              {!updateRunning && !updateDone && (
+                <button
+                  onClick={() => setShowUpdateModal(false)}
+                  className="w-full py-2 text-sm text-chalk-dim/50 hover:text-chalk-dim transition-colors"
+                >
+                  Close
+                </button>
+              )}
+              {updateError && !updateRunning && (
+                <button
+                  onClick={() => setUpdateProgress([])}
+                  className="w-full py-2 text-sm text-chalk-dim/50 hover:text-chalk-dim transition-colors"
+                >
+                  Dismiss Error
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

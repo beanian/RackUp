@@ -1,5 +1,9 @@
 import path from "path";
 import os from "os";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export const config = {
   obs: {
@@ -11,4 +15,5 @@ export const config = {
     process.env.RECORDINGS_BASE_DIR ??
     path.join(os.homedir(), "Videos"),
   serverPort: Number(process.env.SERVER_PORT ?? 4077),
+  repoDir: path.resolve(__dirname, "../.."),
 };

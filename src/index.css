@@ -339,6 +339,15 @@ input:focus {
   animation: vs-fade-out 0.3s ease-in forwards;
 }
 
+/* ── Update badge pulse ── */
+@keyframes update-pulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(217,168,48,0.4); }
+  50% { box-shadow: 0 0 14px rgba(217,168,48,0.8), 0 0 28px rgba(217,168,48,0.3); }
+}
+.update-glow {
+  animation: update-pulse 2s ease-in-out infinite;
+}
+
 /* ── Large screen scaling (24-32" wall display) ── */
 
 @media (min-width: 1280px) {

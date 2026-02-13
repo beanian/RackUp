@@ -4,6 +4,7 @@ import type { Request, Response } from "express";
 import { createReadStream, statSync } from "fs";
 import { mkdir, readdir, rename, stat, unlink } from "fs/promises";
 import { fileURLToPath } from "url";
+import { execSync, spawn } from "child_process";
 import path from "path";
 import { obs } from "./obs.js";
 import { config } from "./config.js";
@@ -524,6 +525,109 @@ app.post("/api/overlay/update", (req: Request, res: Response) => {
   const body = req.body as Record<string, unknown>;
   overlayState.updateFull(body);
   res.json({ success: true });
+});
+
+// ── Version / Update Routes ──
+
+app.get("/api/version", async (_req: Request, res: Response) => {
+  try {
+    const current = execSync("git rev-parse --short HEAD", {
+      cwd: config.repoDir,
+    })
+      .toString()
+      .trim();
+
+    let updatesAvailable = 0;
+    try {
+      execSync("git fetch origin main --quiet", { cwd: config.repoDir });
+      const count = execSync("git rev-list HEAD..origin/main --count", {
+        cwd: config.repoDir,
+      })
+        .toString()
+        .trim();
+      updatesAvailable = Number(count);
+    } catch {
+      // Network error or no remote — just report 0 updates
+    }
+
+    res.json({ current, updatesAvailable });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: message });
+  }
+});
+
+app.post("/api/update", async (_req: Request, res: Response) => {
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Transfer-Encoding", "chunked");
+
+  const send = (data: Record<string, unknown>) => {
+    res.write(JSON.stringify(data) + "\n");
+  };
+
+  const run = (label: string, cmd: string, cwd?: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      send({ step: label, status: "running" });
+      const child = spawn(cmd, { shell: true, cwd: cwd ?? config.repoDir });
+      let stderr = "";
+      child.stdout?.on("data", (chunk: Buffer) => {
+        send({ step: label, output: chunk.toString() });
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      child.on("close", (code) => {
+        if (code !== 0) {
+          reject(new Error(`${label} failed (exit ${code}): ${stderr}`));
+        } else {
+          send({ step: label, status: "done" });
+          resolve();
+        }
+      });
+    });
+  };
+
+  try {
+    await run("Pulling latest code", "git pull origin main");
+    await run("Installing dependencies", "npm install");
+    await run("Building frontend", "npm run build");
+    await run(
+      "Installing server dependencies",
+      "npm install",
+      path.join(config.repoDir, "server"),
+    );
+
+    const newVersion = execSync("git rev-parse --short HEAD", {
+      cwd: config.repoDir,
+    })
+      .toString()
+      .trim();
+
+    send({ step: "Update complete", status: "done", newVersion, success: true });
+    res.end();
+
+    // Schedule pm2 restart after response is sent
+    setTimeout(() => {
+      try {
+        execSync("npx pm2 restart rackup-server", { cwd: config.repoDir });
+      } catch (e) {
+        console.warn("[Update] pm2 restart failed:", e);
+      }
+    }, 2000);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    send({ step: "Error", status: "error", error: message });
+    res.end();
+  }
+});
+
+// ── Static File Serving (production) ──
+
+const distDir = path.resolve(config.repoDir, "dist");
+app.use("/RackUp", express.static(distDir));
+app.get(/^\/RackUp\/.*/, (_req: Request, res: Response) => {
+  res.sendFile(path.join(distDir, "index.html"));
 });
 
 // ── Start ──
