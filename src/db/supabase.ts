@@ -30,4 +30,5 @@ export interface Frame {
   startedAt?: Date;
   recordedAt: Date;
   videoFilePath?: string;
+  brush: boolean;
 }

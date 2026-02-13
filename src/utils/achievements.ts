@@ -337,6 +337,74 @@ export const ACHIEVEMENTS: Achievement[] = [
       allSessions.filter(s => s.playerIds.includes(playerId)).length >= 100,
   },
 
+  // ── Brushes (winning without opponent potting a ball) ──
+  {
+    id: 'brush-1',
+    name: 'First Brush',
+    icon: '\uD83E\uDDF9',
+    description: 'Brush an opponent for the first time',
+    check: ({ playerId, allFrames }) =>
+      allFrames.some(f => f.winnerId === playerId && f.brush),
+  },
+  {
+    id: 'brush-5',
+    name: 'Brush Off',
+    icon: '\uD83D\uDCA8',
+    description: 'Brush opponents 5 times',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.winnerId === playerId && f.brush).length >= 5,
+  },
+  {
+    id: 'brush-10',
+    name: 'Brush Master',
+    icon: '\uD83E\uDDF9',
+    description: 'Brush opponents 10 times',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.winnerId === playerId && f.brush).length >= 10,
+  },
+  {
+    id: 'brush-25',
+    name: 'Street Sweeper',
+    icon: '\uD83C\uDF2A\uFE0F',
+    description: 'Brush opponents 25 times',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.winnerId === playerId && f.brush).length >= 25,
+  },
+
+  // ── Brushed (losing without potting a ball) ──
+  {
+    id: 'brushed-1',
+    name: 'Dust Bunny',
+    icon: '\uD83D\uDCA9',
+    description: 'Get brushed for the first time',
+    check: ({ playerId, allFrames }) =>
+      allFrames.some(f => f.loserId === playerId && f.brush),
+  },
+  {
+    id: 'brushed-5',
+    name: 'Doormat',
+    icon: '\uD83E\uDEE3',
+    description: 'Get brushed 5 times',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.loserId === playerId && f.brush).length >= 5,
+  },
+  {
+    id: 'brushed-10',
+    name: 'Punching Bag',
+    icon: '\uD83E\uDD4A',
+    description: 'Get brushed 10 times',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.loserId === playerId && f.brush).length >= 10,
+  },
+  {
+    id: 'brushed-25',
+    name: 'Human Broom',
+    icon: '\uD83E\uDEE0',
+    description: 'Get brushed 25 times',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.loserId === playerId && f.brush).length >= 25,
+  },
+
   // ── Monthly ──
   {
     id: 'giant-killer',
