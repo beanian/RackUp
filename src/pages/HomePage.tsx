@@ -78,7 +78,7 @@ export default function HomePage() {
   const [soundOn, setSoundOn] = useState(isSoundEnabled());
   const [showSplash, setShowSplash] = useState(false);
   const pendingFeedback = useRef<{ msg: string; type: 'win' | 'streak' | 'info'; streak?: number } | null>(null);
-  const pendingAchievement = useRef<{ achievement: Achievement; playerName: string } | null>(null);
+  const pendingAchievements = useRef<{ achievement: Achievement; playerName: string }[]>([]);
   const [newAchievement, setNewAchievement] = useState<{ achievement: Achievement; playerName: string } | null>(null);
   const achievementTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [varReviewing, setVarReviewing] = useState(false);
@@ -524,14 +524,11 @@ export default function HomePage() {
     // Check session-scoped achievements for winner (and loser for brush achievements)
     const optimisticAllFrames = [...allFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date(), brush: isBrush } as Frame];
     const newAchs = checkAndUnlock(winnerId, optimisticAllFrames, [], optimisticFrames, monthlyTopId);
-    if (newAchs.length > 0) {
-      pendingAchievement.current = { achievement: newAchs[0], playerName: playerName(winnerId) };
-    }
-    // Also check loser so brush-related achievements trigger in real-time
     const loserAchs = checkAndUnlock(loserId, optimisticAllFrames, [], optimisticFrames, monthlyTopId);
-    if (loserAchs.length > 0 && !pendingAchievement.current) {
-      pendingAchievement.current = { achievement: loserAchs[0], playerName: playerName(loserId) };
-    }
+    pendingAchievements.current = [
+      ...newAchs.map(a => ({ achievement: a, playerName: playerName(winnerId) })),
+      ...loserAchs.map(a => ({ achievement: a, playerName: playerName(loserId) })),
+    ];
 
     if (challengerQueue.length > 0) {
       const [nextChallenger, ...restOfQueue] = challengerQueue;
@@ -557,11 +554,13 @@ export default function HomePage() {
         }
         showFeedback(fb.msg, fb.type);
       }
-      const ach = pendingAchievement.current;
-      if (ach) {
-        pendingAchievement.current = null;
+      const achs = pendingAchievements.current;
+      if (achs.length > 0) {
+        pendingAchievements.current = [];
         const winToastDuration = fb?.type === 'streak' ? 2500 : 1500;
-        setTimeout(() => showAchievementToast(ach.achievement, ach.playerName), winToastDuration + 200);
+        achs.forEach((ach, i) => {
+          setTimeout(() => showAchievementToast(ach.achievement, ach.playerName), winToastDuration + 200 + i * 3500);
+        });
       }
     }, 1000);
 
@@ -1389,10 +1388,12 @@ export default function HomePage() {
               }
               showFeedback(fb.msg, fb.type);
             }
-            if (pendingAchievement.current) {
-              const ach = pendingAchievement.current;
-              pendingAchievement.current = null;
-              showAchievementToast(ach.achievement, ach.playerName);
+            const achs = pendingAchievements.current;
+            if (achs.length > 0) {
+              pendingAchievements.current = [];
+              achs.forEach((ach, i) => {
+                setTimeout(() => showAchievementToast(ach.achievement, ach.playerName), 200 + i * 3500);
+              });
             }
             // Start OBS recording for this frame
             if (recordingEnabled && activeSession && player1Id !== null && player2Id !== null) {
@@ -1416,7 +1417,7 @@ export default function HomePage() {
           onEndSession={() => {
             setShowSplash(false);
             pendingFeedback.current = null;
-            pendingAchievement.current = null;
+            pendingAchievements.current = [];
             handleEndSession();
           }}
         />
