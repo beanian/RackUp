@@ -4,6 +4,13 @@ import { NavLink } from 'react-router-dom';
 export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-col h-full">
+      {/* App header */}
+      <header className="shrink-0 panel-wood px-4 py-2.5 text-center border-b border-trim-light/30">
+        <h1 className="font-display text-2xl text-gold glow-gold tracking-wide">
+          The Cueman's Arch
+        </h1>
+      </header>
+
       {/* Scrollable content area */}
       <main className="flex-1 overflow-y-auto px-3 pt-3 pb-20">
         {children}

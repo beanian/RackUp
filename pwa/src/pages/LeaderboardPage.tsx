@@ -74,8 +74,6 @@ export default function LeaderboardPage() {
 
   return (
     <div className="flex flex-col gap-3">
-      <h1 className="font-display text-3xl text-chalk chalk-text">Leaderboard</h1>
-
       {/* Time period tabs */}
       <div className="flex gap-1.5">
         {(['month', 'year', 'alltime'] as TimePeriod[]).map((period) => (

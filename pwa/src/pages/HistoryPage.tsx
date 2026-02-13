@@ -93,8 +93,6 @@ export default function HistoryPage() {
 
   return (
     <div className="flex flex-col gap-3">
-      <h1 className="font-display text-3xl text-chalk chalk-text">History</h1>
-
       {/* Summary stats */}
       <div className="panel p-3 flex items-center justify-around">
         <div className="flex flex-col items-center">
