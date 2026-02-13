@@ -2,6 +2,7 @@
 
 ## Project Overview
 
+
 RackUp is a touch-friendly digital scoreboard and recording management application designed to replace a physical chalkboard and streamline video recording in a home pool room (UK 8-ball pool). The app will be used by an elderly user and his friends during casual pool sessions to track frame results, session scores, long-term statistics, and manage per-frame video recordings via OBS Studio.
 
 The system runs on a dedicated mini PC connected to a wall-mounted touchscreen display and an overhead webcam. RackUp serves as the central control hub — the touchscreen replaces both the chalkboard and the Elgato Stream Deck currently used to manage OBS. The existing Stream Deck is retained as a fallback/companion input device.
