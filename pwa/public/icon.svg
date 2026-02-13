@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0f1c14"/>
+  <circle cx="256" cy="256" r="160" fill="#142018" stroke="#d9a830" stroke-width="8"/>
+  <circle cx="256" cy="256" r="24" fill="#f0ece0"/>
+  <text x="256" y="420" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="72" fill="#d9a830">RACK UP</text>
+</svg>
