@@ -115,6 +115,7 @@ describe('mapFrame', () => {
       loser_id: 2,
       recorded_at: '2025-06-15T19:15:00.000Z',
       video_file_path: null,
+      started_at: null,
     };
 
     const frame = mapFrame(row);
@@ -126,6 +127,7 @@ describe('mapFrame', () => {
       loserId: 2,
       recordedAt: new Date('2025-06-15T19:15:00.000Z'),
       videoFilePath: undefined,
+      startedAt: undefined,
     });
   });
 
@@ -137,6 +139,7 @@ describe('mapFrame', () => {
       loser_id: 4,
       recorded_at: '2025-08-20T22:45:30.500Z',
       video_file_path: null,
+      started_at: null,
     };
 
     const frame = mapFrame(row);
@@ -155,6 +158,7 @@ describe('mapFrame', () => {
       loser_id: 8,
       recorded_at: '2025-01-01T00:00:00.000Z',
       video_file_path: null,
+      started_at: null,
     };
 
     const frame = mapFrame(row);
