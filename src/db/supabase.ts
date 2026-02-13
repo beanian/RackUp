@@ -8,6 +8,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export interface Player {
   id?: number;
   name: string;
+  nickname?: string;
   emoji?: string;
   createdAt: Date;
   archived: boolean;
@@ -26,6 +27,7 @@ export interface Frame {
   sessionId: number;
   winnerId: number;
   loserId: number;
+  startedAt?: Date;
   recordedAt: Date;
   videoFilePath?: string;
 }

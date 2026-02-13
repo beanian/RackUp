@@ -10,5 +10,5 @@ export const config = {
   recordingsBaseDir:
     process.env.RECORDINGS_BASE_DIR ??
     path.join(os.homedir(), "Videos"),
-  serverPort: Number(process.env.SERVER_PORT ?? 4010),
+  serverPort: Number(process.env.SERVER_PORT ?? 4077),
 };

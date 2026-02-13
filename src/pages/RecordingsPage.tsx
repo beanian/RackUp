@@ -7,10 +7,22 @@ interface RecordingMeta {
   player1: string;
   player2: string;
   frameNumber: number;
+  segment: number | null;
   sizeBytes: number;
+  flags: string[];
 }
 
-const API = import.meta.env.VITE_API_URL ?? 'http://localhost:4010';
+const API = import.meta.env.VITE_API_URL ?? 'http://localhost:4077';
+
+const FLAG_CONFIG = {
+  brush:     { label: 'Brush',     bg: 'bg-blue-600',   text: 'text-white' },
+  clearance: { label: 'Clearance', bg: 'bg-green-600',  text: 'text-white' },
+  foul:      { label: 'Foul',      bg: 'bg-red-600',    text: 'text-white' },
+  special:   { label: 'Special',   bg: 'bg-yellow-500', text: 'text-black' },
+} as const;
+
+type FlagKey = keyof typeof FLAG_CONFIG;
+const ALL_FLAGS: FlagKey[] = ['brush', 'clearance', 'foul', 'special'];
 
 export default function RecordingsPage() {
   const [recordings, setRecordings] = useState<RecordingMeta[]>([]);
@@ -57,6 +69,33 @@ export default function RecordingsPage() {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  async function toggleFlag(rec: RecordingMeta, flag: FlagKey) {
+    const newFlags = rec.flags.includes(flag)
+      ? rec.flags.filter((f) => f !== flag)
+      : [...rec.flags, flag].sort();
+
+    try {
+      const res = await fetch(`${API}/api/recordings/flag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ relativePath: rec.relativePath, flags: newFlags }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const updated: RecordingMeta = await res.json();
+
+      setRecordings((prev) =>
+        prev.map((r) => (r.relativePath === rec.relativePath ? updated : r)),
+      );
+
+      // Update selected recording if it was the one flagged
+      if (selected?.relativePath === rec.relativePath) {
+        setSelected(updated);
+      }
+    } catch (err) {
+      console.error('Failed to update flags:', err);
+    }
+  }
 
   if (loading) {
     return (
@@ -139,30 +178,52 @@ export default function RecordingsPage() {
 
       {/* Recording list */}
       {recordings.map((rec) => (
-        <button
-          key={rec.relativePath}
-          onClick={() => { setSelected(rec); setVideoError(false); }}
-          className="btn-press block w-full text-left panel p-5 xl:p-8"
-        >
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-chalk text-lg xl:text-2xl 2xl:text-3xl font-semibold">
-                {rec.player1} vs {rec.player2}
-              </p>
-              <p className="text-chalk-dim text-sm xl:text-lg mt-1">
-                {rec.date} at {rec.time}
-              </p>
+        <div key={rec.relativePath} className="panel p-5 xl:p-8 flex items-center gap-4 xl:gap-6">
+          <button
+            onClick={() => { setSelected(rec); setVideoError(false); }}
+            className="btn-press flex-1 min-w-0 text-left"
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-chalk text-lg xl:text-2xl 2xl:text-3xl font-semibold">
+                  {rec.player1} vs {rec.player2}
+                </p>
+                <p className="text-chalk-dim text-sm xl:text-lg mt-1">
+                  {rec.date} at {rec.time}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-chalk-dim text-sm xl:text-lg">
+                  Frame {rec.frameNumber}
+                </p>
+                <p className="text-chalk-dim text-sm xl:text-lg">
+                  {formatSize(rec.sizeBytes)}
+                </p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-chalk-dim text-sm xl:text-lg">
-                Frame {rec.frameNumber}
-              </p>
-              <p className="text-chalk-dim text-sm xl:text-lg">
-                {formatSize(rec.sizeBytes)}
-              </p>
-            </div>
+          </button>
+
+          {/* Flag pills — inline, tap to toggle */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {ALL_FLAGS.map((flag) => {
+              const cfg = FLAG_CONFIG[flag];
+              const active = rec.flags.includes(flag);
+              return (
+                <button
+                  key={flag}
+                  onClick={() => toggleFlag(rec, flag)}
+                  className={`text-xs xl:text-sm font-semibold px-2 py-0.5 rounded-full transition-all ${
+                    active
+                      ? `${cfg.bg} ${cfg.text}`
+                      : 'bg-white/5 text-chalk-dim/40 hover:bg-white/10'
+                  }`}
+                >
+                  {cfg.label}
+                </button>
+              );
+            })}
           </div>
-        </button>
+        </div>
       ))}
     </div>
   );

@@ -156,12 +156,14 @@ class OBSClient {
         recording: status.outputActive,
         recordingDuration: status.outputDuration,
       };
-    } catch {
-      return {
-        connected: this._connected,
-        recording: this._recording,
-        recordingDuration: 0,
-      };
+    } catch (err) {
+      // If we can't talk to OBS, the connection is dead
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[OBS] getStatus failed, marking disconnected: ${msg}`);
+      this._connected = false;
+      this._recording = false;
+      this.scheduleReconnect();
+      return { connected: false, recording: false, recordingDuration: 0 };
     }
   }
 
@@ -187,6 +189,7 @@ class OBSClient {
   private async autoSetup(): Promise<void> {
     await this.ensureVirtualCamera();
     await this.ensureBrowserSource();
+    await this.ensureMp4Format();
   }
 
   private async ensureVirtualCamera(): Promise<void> {
@@ -269,6 +272,27 @@ class OBSClient {
     }
   }
 
+  private async ensureMp4Format(): Promise<void> {
+    try {
+      // Detect which output mode OBS is using
+      const mode = await this.obs.call("GetProfileParameter", {
+        parameterCategory: "Output",
+        parameterName: "Mode",
+      });
+      const category = mode.parameterValue === "Advanced" ? "AdvOut" : "SimpleOutput";
+
+      await this.obs.call("SetProfileParameter", {
+        parameterCategory: category,
+        parameterName: "RecFormat2",
+        parameterValue: "mp4",
+      });
+      console.log(`[OBS] Recording format set to MP4 (${category})`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[OBS] Could not set MP4 format: ${msg}`);
+    }
+  }
+
   generateFilename(player1: string, player2: string, frameNumber: number): string {
     const now = new Date();
     const date = now.toISOString().slice(0, 10); // YYYY-MM-DD
@@ -276,7 +300,12 @@ class OBSClient {
     const minutes = String(now.getMinutes()).padStart(2, "0");
     const frame = String(frameNumber).padStart(3, "0");
     const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, "_");
-    return `${date}_${hours}${minutes}_${sanitize(player1)}-vs-${sanitize(player2)}_Frame${frame}.mkv`;
+    return `${date}_${hours}${minutes}_${sanitize(player1)}-vs-${sanitize(player2)}_Frame${frame}.mp4`;
+  }
+
+  generateSegmentFilename(player1: string, player2: string, frameNumber: number, segment: number): string {
+    const base = this.generateFilename(player1, player2, frameNumber);
+    return base.replace(/\.mp4$/, `_pt${segment}.mp4`);
   }
 
   generateDirectory(sessionDate: string): string {

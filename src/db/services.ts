@@ -37,6 +37,14 @@ export async function addPlayer(name: string, emoji?: string): Promise<number> {
   return data.id;
 }
 
+export async function updatePlayerNickname(id: number, nickname: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('players')
+    .update({ nickname })
+    .eq('id', id);
+  if (error) throw error;
+}
+
 export async function updatePlayerEmoji(id: number, emoji: string | null): Promise<void> {
   const { error } = await supabase
     .from('players')
@@ -157,6 +165,7 @@ export async function recordFrame(
   sessionId: number,
   winnerId: number,
   loserId: number,
+  startedAt?: Date,
   videoFilePath?: string,
 ): Promise<number> {
   const row: Record<string, unknown> = {
@@ -165,6 +174,9 @@ export async function recordFrame(
     loser_id: loserId,
     recorded_at: new Date().toISOString(),
   };
+  if (startedAt) {
+    row.started_at = startedAt.toISOString();
+  }
   if (videoFilePath) {
     row.video_file_path = videoFilePath;
   }

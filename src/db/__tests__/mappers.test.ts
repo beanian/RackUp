@@ -7,6 +7,7 @@ describe('mapPlayer', () => {
     const row: PlayerRow = {
       id: 1,
       name: 'Dave',
+      nickname: null,
       emoji: null,
       created_at: '2025-06-15T10:30:00.000Z',
       archived: false,
@@ -26,6 +27,7 @@ describe('mapPlayer', () => {
     const row: PlayerRow = {
       id: 5,
       name: 'Old Player',
+      nickname: null,
       emoji: null,
       created_at: '2024-01-01T00:00:00.000Z',
       archived: true,
@@ -40,6 +42,7 @@ describe('mapPlayer', () => {
     const row: PlayerRow = {
       id: 2,
       name: 'Test',
+      nickname: null,
       emoji: null,
       created_at: '2025-12-25T18:00:00.000Z',
       archived: false,

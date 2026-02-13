@@ -226,6 +226,28 @@ input:focus {
   max-width: 50%;
 }
 
+/* ── Winner tap flash ── */
+@keyframes winner-flash {
+  0% { border-color: rgba(92,232,146,1); box-shadow: 0 0 0 0 rgba(92,232,146,0.6); }
+  50% { border-color: rgba(92,232,146,1); box-shadow: 0 0 20px 4px rgba(92,232,146,0.3); }
+  100% { border-color: rgba(92,232,146,0); box-shadow: 0 0 0 0 rgba(92,232,146,0); }
+}
+
+.winner-flash {
+  animation: winner-flash 0.4s ease-out;
+}
+
+/* ── Flag toggle pop ── */
+@keyframes flag-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+.flag-pop {
+  animation: flag-pop 0.25s ease-out;
+}
+
 /* ── Gamification animations ── */
 
 @keyframes toast-in {

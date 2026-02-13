@@ -7,8 +7,9 @@ export default defineConfig({
   base: '/RackUp/',
   plugins: [react(), tailwindcss()],
   server: {
+    port: 5177,
     proxy: {
-      '/api': 'http://localhost:4010',
+      '/api': 'http://localhost:4077',
     },
   },
   test: {

@@ -10,6 +10,7 @@ import {
   type LeaderboardEntry,
 } from '../db/services';
 import { ACHIEVEMENTS, getUnlockedForPlayer, checkAndUnlock, loadAchievementsCache, isCacheLoaded } from '../utils/achievements';
+import PlayerName from '../components/PlayerName';
 
 type MainTab = 'player' | 'leaderboard';
 type StatsSubTab = 'overview' | 'h2h' | 'achievements';
@@ -111,6 +112,15 @@ export default function StatsPage() {
     return map;
   }, [players]);
 
+  // Player nickname map
+  const playerNicknameMap = useMemo(() => {
+    const map: Record<number, string | undefined> = {};
+    for (const p of players) {
+      if (p.id !== undefined) map[p.id] = p.nickname;
+    }
+    return map;
+  }, [players]);
+
   // Current form: last 5 sessions results for selected player
   const currentForm = useMemo(() => {
     if (!selectedPlayerId) return [];
@@ -159,6 +169,7 @@ export default function StatsPage() {
           onSelectPlayer={setSelectedPlayerId}
           stats={playerStats}
           playerMap={playerMap}
+          playerNicknameMap={playerNicknameMap}
           currentForm={currentForm}
           allFrames={allFrames}
           allSessions={allSessions}
@@ -175,6 +186,7 @@ export default function StatsPage() {
           selectedYear={selectedYear}
           onYearChange={setSelectedYear}
           availableYears={availableYears}
+          playerNicknameMap={playerNicknameMap}
         />
       )}
     </div>
@@ -189,6 +201,7 @@ function PlayerStatsView({
   onSelectPlayer,
   stats,
   playerMap,
+  playerNicknameMap,
   currentForm,
   allFrames,
   allSessions,
@@ -198,6 +211,7 @@ function PlayerStatsView({
   onSelectPlayer: (id: number) => void;
   stats: PlayerStats | null;
   playerMap: Record<number, string>;
+  playerNicknameMap: Record<number, string | undefined>;
   currentForm: { sessionId: number; date: string; wins: number; losses: number }[];
   allFrames: Frame[];
   allSessions: Session[];
@@ -240,18 +254,30 @@ function PlayerStatsView({
 
   return (
     <div className="flex flex-col gap-4 xl:gap-6">
-      {/* Player selector */}
-      <select
-        value={selectedPlayerId ?? ''}
-        onChange={(e) => onSelectPlayer(Number(e.target.value))}
-        className="w-full min-h-16 xl:min-h-24 px-4 xl:px-6 rounded-xl bg-board border border-board-light text-chalk font-bold text-xl xl:text-3xl appearance-none cursor-pointer"
-      >
-        {players.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </select>
+      {/* Player selector — visual cards */}
+      <div className="flex gap-2 xl:gap-3 overflow-x-auto pb-1 -mx-1 px-1">
+        {players.map((p) => {
+          const isSelected = selectedPlayerId === p.id;
+          return (
+            <button
+              key={p.id}
+              onClick={() => onSelectPlayer(p.id!)}
+              className={`btn-press flex-shrink-0 flex flex-col items-center justify-center min-w-[80px] xl:min-w-[110px] py-3 xl:py-4 px-3 xl:px-5 rounded-xl border-2 transition-all ${
+                isSelected
+                  ? 'panel !border-gold text-gold'
+                  : 'bg-board-dark border-board-light/30 text-chalk'
+              }`}
+            >
+              {p.emoji && (
+                <span className="text-2xl xl:text-4xl mb-1">{p.emoji}</span>
+              )}
+              <span className={`text-sm xl:text-lg font-bold truncate max-w-[80px] xl:max-w-[100px] ${isSelected ? 'text-gold' : ''}`}>
+                {p.name}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {stats && (
         <>
@@ -347,9 +373,11 @@ function PlayerStatsView({
                           key={opponentId}
                           className="flex items-center justify-between bg-board-dark/50 rounded-lg px-4 py-3 xl:px-6 xl:py-5 border border-board-light/20"
                         >
-                          <span className="text-chalk font-semibold truncate mr-3 text-lg xl:text-2xl">
-                            {playerMap[Number(opponentId)] ?? `Player ${opponentId}`}
-                          </span>
+                          <PlayerName
+                            name={playerMap[Number(opponentId)] ?? `Player ${opponentId}`}
+                            nickname={playerNicknameMap[Number(opponentId)]}
+                            className="text-chalk font-semibold truncate mr-3 text-lg xl:text-2xl"
+                          />
                           <div className="flex items-center gap-3 xl:gap-5 shrink-0">
                             <span className="text-win font-bold score-num xl:text-2xl">{record.won}W</span>
                             <span className="text-loss font-bold score-num xl:text-2xl">{record.lost}L</span>
@@ -412,6 +440,7 @@ function LeaderboardView({
   selectedYear,
   onYearChange,
   availableYears,
+  playerNicknameMap,
 }: {
   leaderboard: LeaderboardEntry[];
   timePeriod: TimePeriod;
@@ -421,6 +450,7 @@ function LeaderboardView({
   selectedYear: number;
   onYearChange: (y: number) => void;
   availableYears: number[];
+  playerNicknameMap: Record<number, string | undefined>;
 }) {
   return (
     <div className="flex flex-col gap-4 xl:gap-6">
@@ -519,9 +549,11 @@ function LeaderboardView({
                 <span className={`w-8 xl:w-12 text-center shrink-0 font-black score-num text-xl xl:text-3xl 2xl:text-4xl ${rankColor} ${isChampion ? 'glow-gold' : ''}`}>
                   {rank}
                 </span>
-                <span className={`flex-1 ml-2 xl:ml-4 text-chalk font-bold text-lg xl:text-2xl 2xl:text-3xl truncate chalk-text ${isChampion ? 'glow-gold' : ''}`}>
-                  {entry.playerName}
-                </span>
+                <PlayerName
+                  name={entry.playerName}
+                  nickname={playerNicknameMap[entry.playerId]}
+                  className={`flex-1 ml-2 xl:ml-4 text-chalk font-bold text-lg xl:text-2xl 2xl:text-3xl truncate chalk-text ${isChampion ? 'glow-gold' : ''}`}
+                />
                 <span className="w-14 xl:w-20 text-center shrink-0 text-win font-black score-num text-xl xl:text-3xl 2xl:text-4xl">
                   {entry.framesWon}
                 </span>

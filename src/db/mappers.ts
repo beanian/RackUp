@@ -5,6 +5,7 @@ import type { Player, Session, Frame } from './supabase';
 export interface PlayerRow {
   id: number;
   name: string;
+  nickname: string | null;
   emoji: string | null;
   created_at: string;
   archived: boolean;
@@ -23,6 +24,7 @@ export interface FrameRow {
   session_id: number;
   winner_id: number;
   loser_id: number;
+  started_at: string | null;
   recorded_at: string;
   video_file_path: string | null;
 }
@@ -33,6 +35,7 @@ export function mapPlayer(row: PlayerRow): Player {
   return {
     id: row.id,
     name: row.name,
+    nickname: row.nickname ?? undefined,
     emoji: row.emoji ?? undefined,
     createdAt: new Date(row.created_at),
     archived: row.archived,
@@ -55,6 +58,7 @@ export function mapFrame(row: FrameRow): Frame {
     sessionId: row.session_id,
     winnerId: row.winner_id,
     loserId: row.loser_id,
+    startedAt: row.started_at ? new Date(row.started_at) : undefined,
     recordedAt: new Date(row.recorded_at),
     videoFilePath: row.video_file_path ?? undefined,
   };

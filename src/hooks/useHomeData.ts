@@ -5,6 +5,7 @@ import { mapPlayer, mapSession, mapFrame, type PlayerRow, type SessionRow, type 
 
 interface MonthlyEntry {
   name: string;
+  nickname?: string;
   emoji?: string;
   won: number;
   lost: number;
@@ -82,7 +83,7 @@ export function useHomeData(): HomeData {
 
       const map = new Map<number, MonthlyEntry>();
       for (const p of allP) {
-        if (p.id !== undefined) map.set(p.id, { name: p.name, emoji: p.emoji, won: 0, lost: 0 });
+        if (p.id !== undefined) map.set(p.id, { name: p.name, nickname: p.nickname, emoji: p.emoji, won: 0, lost: 0 });
       }
       for (const f of monthFrames) {
         const w = map.get(f.winnerId);

@@ -8,19 +8,23 @@ import {
   restorePlayer,
   deletePlayer,
   updatePlayerEmoji,
+  updatePlayerNickname,
 } from '../db/services';
 import VirtualKeyboard from '../components/VirtualKeyboard';
 import EmojiPicker, { Theme, type EmojiClickData } from 'emoji-picker-react';
+import PlayerName from '../components/PlayerName';
 
 export default function PlayersPage() {
   const [activePlayers, setActivePlayers] = useState<Player[]>([]);
   const [archivedPlayers, setArchivedPlayers] = useState<Player[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newNickname, setNewNickname] = useState('');
   const [newEmoji, setNewEmoji] = useState('\uD83C\uDFB1');
   const [editingEmojiId, setEditingEmojiId] = useState<number | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [renameNickname, setRenameNickname] = useState('');
   const [renameEmoji, setRenameEmoji] = useState<string>('\uD83C\uDFB1');
   const [showEmojiPicker, setShowEmojiPicker] = useState<'add' | 'rename' | 'edit' | null>(null);
   const [confirmArchiveId, setConfirmArchiveId] = useState<number | null>(null);
@@ -41,8 +45,11 @@ export default function PlayersPage() {
   async function handleAdd() {
     const trimmed = newName.trim();
     if (!trimmed) return;
-    await addPlayer(trimmed, newEmoji);
+    const id = await addPlayer(trimmed, newEmoji);
+    const nick = newNickname.trim();
+    if (nick) await updatePlayerNickname(id, nick);
     setNewName('');
+    setNewNickname('');
     setNewEmoji('\uD83C\uDFB1');
     setShowAddForm(false);
     refresh();
@@ -63,8 +70,11 @@ export default function PlayersPage() {
     if (renameEmoji !== originalEmoji) {
       await updatePlayerEmoji(id, renameEmoji);
     }
+    const nick = renameNickname.trim();
+    await updatePlayerNickname(id, nick || null);
     setRenamingId(null);
     setRenameValue('');
+    setRenameNickname('');
     refresh();
   }
 
@@ -116,10 +126,22 @@ export default function PlayersPage() {
                 if (e.key === 'Escape') {
                   setShowAddForm(false);
                   setNewName('');
+                  setNewNickname('');
                 }
               }}
               placeholder="Enter name..."
               className="flex-1 px-4 py-3 xl:px-6 xl:py-5 rounded-lg bg-board-dark border border-board-light text-chalk text-lg xl:text-2xl placeholder-chalk-dim"
+            />
+          </div>
+          <div className="mb-3">
+            <label className="block text-chalk-dim text-sm xl:text-lg mb-1 xl:mb-2 uppercase tracking-wider">Nickname <span className="normal-case text-chalk-dim/60">(optional)</span></label>
+            <input
+              type="text"
+              inputMode="none"
+              value={newNickname}
+              onChange={(e) => setNewNickname(e.target.value)}
+              placeholder='e.g. "Thunder"'
+              className="w-full px-4 py-3 xl:px-6 xl:py-5 rounded-lg bg-board-dark border border-board-light text-chalk text-lg xl:text-2xl placeholder-chalk-dim"
             />
           </div>
           {showEmojiPicker === 'add' && (
@@ -144,6 +166,7 @@ export default function PlayersPage() {
             onCancel={() => {
               setShowAddForm(false);
               setNewName('');
+              setNewNickname('');
               setShowEmojiPicker(null);
             }}
           />
@@ -191,10 +214,22 @@ export default function PlayersPage() {
                       if (e.key === 'Escape') {
                         setRenamingId(null);
                         setRenameValue('');
+                        setRenameNickname('');
                         setShowEmojiPicker(null);
                       }
                     }}
                     className="flex-1 px-4 py-3 xl:px-6 xl:py-5 rounded-lg bg-board-dark border border-board-light text-chalk text-lg xl:text-2xl placeholder-chalk-dim"
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="block text-chalk-dim text-sm xl:text-lg mb-1 xl:mb-2 uppercase tracking-wider">Nickname <span className="normal-case text-chalk-dim/60">(optional)</span></label>
+                  <input
+                    type="text"
+                    inputMode="none"
+                    value={renameNickname}
+                    onChange={(e) => setRenameNickname(e.target.value)}
+                    placeholder='e.g. "Thunder"'
+                    className="w-full px-4 py-3 xl:px-6 xl:py-5 rounded-lg bg-board-dark border border-board-light text-chalk text-lg xl:text-2xl placeholder-chalk-dim"
                   />
                 </div>
                 {showEmojiPicker === 'rename' && (
@@ -219,6 +254,7 @@ export default function PlayersPage() {
                   onCancel={() => {
                     setRenamingId(null);
                     setRenameValue('');
+                    setRenameNickname('');
                     setShowEmojiPicker(null);
                   }}
                 />
@@ -248,22 +284,21 @@ export default function PlayersPage() {
               /* Normal display */
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-3 xl:gap-5">
-                  <div className="flex items-center gap-3 xl:gap-4 truncate flex-1">
+                  <div className="flex items-center gap-3 xl:gap-4 min-w-0 flex-1 overflow-hidden">
                     <button
                       onClick={() => setEditingEmojiId(editingEmojiId === player.id ? null : player.id!)}
                       className="btn-press text-3xl xl:text-5xl shrink-0"
                     >
                       {player.emoji || '\uD83C\uDFB1'}
                     </button>
-                    <span className="text-[28px] xl:text-[44px] 2xl:text-[52px] font-semibold text-chalk chalk-text truncate">
-                      {player.name}
-                    </span>
+                    <PlayerName name={player.name} nickname={player.nickname} className="text-[28px] xl:text-[44px] 2xl:text-[52px] font-semibold text-chalk chalk-text whitespace-nowrap text-ellipsis" />
                   </div>
                   <div className="flex gap-2 xl:gap-4 shrink-0">
                     <button
                       onClick={() => {
                         setRenamingId(player.id!);
                         setRenameValue(player.name);
+                        setRenameNickname(player.nickname || '');
                         setRenameEmoji(player.emoji || '\uD83C\uDFB1');
                         setConfirmArchiveId(null);
                         setEditingEmojiId(null);

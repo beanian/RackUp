@@ -148,16 +148,26 @@
   }
 
   .player-name {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    white-space: nowrap;
+    line-height: 72px;
     font-size: 26px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 1.5px;
     color: var(--scorebug-text);
+  }
+
+  .player-nickname {
+    flex-shrink: 0;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 240px;
-    line-height: 72px;
+    font-style: italic;
+    color: var(--scorebug-text-dim);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
   }
 
   /* ── Score Centre ── */
@@ -356,9 +366,18 @@
 
   // ── DOM updates ──
 
+  function formatPlayerName(player) {
+    if (!player) return '';
+    var nick = player.nickname;
+    if (nick) {
+      return player.name + ' <span class="player-nickname">\u201C' + nick + '\u201D</span>';
+    }
+    return player.name;
+  }
+
   function setNames(state) {
-    nameAEl.textContent = playerName(state.playerA);
-    nameBEl.textContent = playerName(state.playerB);
+    nameAEl.innerHTML = formatPlayerName(state.playerA);
+    nameBEl.innerHTML = formatPlayerName(state.playerB);
     var eA = playerEmoji(state.playerA);
     var eB = playerEmoji(state.playerB);
     emojiAEl.textContent = eA;

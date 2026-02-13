@@ -15,9 +15,20 @@ import VsSplash from '../components/VsSplash';
 import { getWinStreak, getStreakMessage } from '../utils/streaks';
 import { checkAndUnlock, type Achievement } from '../utils/achievements';
 import AnimatedNumber from '../components/AnimatedNumber';
+import PlayerName from '../components/PlayerName';
 
 type View = 'idle' | 'picking' | 'session' | 'summary';
 type MatchStep = 'pickPlayer1' | 'pickPlayer2' | 'gameOn';
+
+const FLAG_CONFIG = {
+  brush:     { label: 'Brush',     bg: 'bg-blue-600',   text: 'text-white' },
+  clearance: { label: 'Clearance', bg: 'bg-green-600',  text: 'text-white' },
+  foul:      { label: 'Foul',      bg: 'bg-red-600',    text: 'text-white' },
+  special:   { label: 'Special',   bg: 'bg-yellow-500', text: 'text-black' },
+} as const;
+
+type FlagKey = keyof typeof FLAG_CONFIG;
+const ALL_FLAGS: FlagKey[] = ['brush', 'clearance', 'foul', 'special'];
 
 const MATCH_STATE_KEY = 'rackup-match-state';
 
@@ -61,6 +72,7 @@ export default function HomePage() {
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [confirmUndo, setConfirmUndo] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [confirmChangePlayers, setConfirmChangePlayers] = useState(false);
   const [feedback, setFeedback] = useState<{ msg: string; type: 'win' | 'streak' | 'info' } | null>(null);
   const feedbackTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [soundOn, setSoundOn] = useState(isSoundEnabled());
@@ -69,6 +81,12 @@ export default function HomePage() {
   const pendingAchievement = useRef<{ achievement: Achievement; playerName: string } | null>(null);
   const [newAchievement, setNewAchievement] = useState<{ achievement: Achievement; playerName: string } | null>(null);
   const achievementTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [varReviewing, setVarReviewing] = useState(false);
+  const [varVideoPath, setVarVideoPath] = useState<string | null>(null);
+  const [currentFrameFlags, setCurrentFrameFlags] = useState<FlagKey[]>([]);
+  const [winnerFlash, setWinnerFlash] = useState<number | null>(null);
+  const [flagPopKey, setFlagPopKey] = useState(0);
+  const frameStartedAt = useRef<Date | null>(null);
 
   // ── Data ──
 
@@ -112,17 +130,23 @@ export default function HomePage() {
     localStorage.setItem('rackup-recording-enabled', String(next));
     updateOverlay({ isRecording: next });
 
-    if (activeSession && next) {
-      // Toggled ON mid-session → start recording now
-      try {
-        await fetch('/api/obs/start-recording', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        });
-      } catch (e) {
-        console.warn('OBS: Failed to start recording', e);
-      }
+    if (activeSession && next && player1Id !== null && player2Id !== null) {
+      // Toggled ON mid-session → start recording with proper naming
+      const p1Wins = sessionFrames.filter(f => f.winnerId === player1Id).length;
+      const p2Wins = sessionFrames.filter(f => f.winnerId === player2Id).length;
+      fetch('/api/obs/frame-transition', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player1: playerName(player1Id),
+          player2: playerName(player2Id),
+          player1Nickname: playerNickname(player1Id) ?? null,
+          player2Nickname: playerNickname(player2Id) ?? null,
+          score: `${p1Wins}-${p2Wins}`,
+          sessionDate: activeSession.date,
+          frameNumber: sessionFrames.length + 1,
+        }),
+      }).catch(e => console.warn('OBS: Failed to start recording', e));
     } else if (activeSession && !next && obsStatus.recording) {
       // Toggled OFF mid-session → stop recording
       try {
@@ -214,6 +238,11 @@ export default function HomePage() {
     [allPlayers],
   );
 
+  const playerNickname = useCallback(
+    (id: number) => allPlayers.find(p => p.id === id)?.nickname,
+    [allPlayers],
+  );
+
   const playerEmoji = useCallback(
     (id: number) => allPlayers.find(p => p.id === id)?.emoji,
     [allPlayers],
@@ -273,11 +302,32 @@ export default function HomePage() {
     return { p1Wins, p2Wins, total: p1Wins + p2Wins };
   }, [allFrames, player1Id, player2Id]);
 
+  // ── Player sort: most sessions played first ──
+  const sortedPlayers = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const f of allFrames) {
+      if (!counts.has(f.winnerId)) counts.set(f.winnerId, 0);
+      if (!counts.has(f.loserId)) counts.set(f.loserId, 0);
+    }
+    // Count unique sessions per player
+    const sessionSets = new Map<number, Set<number>>();
+    for (const f of allFrames) {
+      if (!sessionSets.has(f.winnerId)) sessionSets.set(f.winnerId, new Set());
+      if (!sessionSets.has(f.loserId)) sessionSets.set(f.loserId, new Set());
+      sessionSets.get(f.winnerId)!.add(f.sessionId);
+      sessionSets.get(f.loserId)!.add(f.sessionId);
+    }
+    for (const [id, sessions] of sessionSets) {
+      counts.set(id, sessions.size);
+    }
+    return [...players].sort((a, b) => (counts.get(b.id!) ?? 0) - (counts.get(a.id!) ?? 0));
+  }, [players, allFrames]);
+
   // ── Achievement toast helper ──
   const showAchievementToast = useCallback((ach: Achievement, name: string) => {
     clearTimeout(achievementTimer.current);
     setNewAchievement({ achievement: ach, playerName: name });
-    achievementTimer.current = setTimeout(() => setNewAchievement(null), 3000);
+    achievementTimer.current = setTimeout(() => setNewAchievement(null), 9000);
   }, []);
 
   // ── Handlers ──
@@ -303,29 +353,14 @@ export default function HomePage() {
     setView('session');
     updateOverlay({
       visible: true,
-      playerA: { id: String(first), name: playerName(first), emoji: playerEmoji(first), score: 0 },
-      playerB: { id: String(second), name: playerName(second), emoji: playerEmoji(second), score: 0 },
+      playerA: { id: String(first), name: playerName(first), nickname: playerNickname(first), emoji: playerEmoji(first), score: 0 },
+      playerB: { id: String(second), name: playerName(second), nickname: playerNickname(second), emoji: playerEmoji(second), score: 0 },
       sessionDate: new Date().toISOString().slice(0, 10),
       frameNumber: 1,
       lastWinnerId: null,
     });
     refresh();
-
-    // Start OBS recording for first frame if enabled
-    if (recordingEnabled) {
-      try {
-        await fetch('/api/obs/start-recording', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            directory: undefined, // server will use default
-            filename: undefined,  // server will generate
-          }),
-        });
-      } catch (e) {
-        console.warn('OBS: Failed to start recording', e);
-      }
-    }
+    // Recording deferred to "Ready to Play" button after splash dismisses
   };
 
   const togglePlayer = (id: number) => {
@@ -341,6 +376,11 @@ export default function HomePage() {
 
   const handleSelectPlayer2 = (id: number) => {
     if (!activeSession) return;
+    // Stop any active recording — next recording starts from the Ready button
+    if (recordingEnabled && obsStatus.recording) {
+      fetch('/api/obs/stop-recording', { method: 'POST' })
+        .catch(e => console.warn('OBS: Failed to stop recording', e));
+    }
     setPlayer2Id(id);
     // Build the challenger queue: everyone except the two playing, in roster order
     const remaining = activeSession.playerIds.filter(pid => pid !== player1Id && pid !== id);
@@ -353,34 +393,18 @@ export default function HomePage() {
     const p2h2h = sessionFrames.filter(f => f.winnerId === id && f.loserId === player1Id).length;
     updateOverlay({
       visible: true,
-      playerA: { id: String(player1Id!), name: playerName(player1Id!), emoji: playerEmoji(player1Id!), score: p1h2h },
-      playerB: { id: String(id), name: playerName(id), emoji: playerEmoji(id), score: p2h2h },
+      playerA: { id: String(player1Id!), name: playerName(player1Id!), nickname: playerNickname(player1Id!), emoji: playerEmoji(player1Id!), score: p1h2h },
+      playerB: { id: String(id), name: playerName(id), nickname: playerNickname(id), emoji: playerEmoji(id), score: p2h2h },
       frameNumber: sessionFrames.length + 1,
       lastWinnerId: null,
     });
   };
 
   const handleRecordWinner = async (winnerId: number) => {
-    if (!activeSession?.id || player1Id === null || player2Id === null) return;
+    if (!activeSession?.id || player1Id === null || player2Id === null || varReviewing) return;
+    setWinnerFlash(winnerId);
+    setTimeout(() => setWinnerFlash(null), 400);
     const loserId = winnerId === player1Id ? player2Id : player1Id;
-
-    // OBS frame transition — fire and forget (don't block UI)
-    // videoFilePath will be undefined for the DB write; the server logs the file path
-    if (recordingEnabled && obsStatus.recording) {
-      const p1Wins = sessionFrames.filter(f => f.winnerId === player1Id).length + (winnerId === player1Id ? 1 : 0);
-      const p2Wins = sessionFrames.filter(f => f.winnerId === player2Id).length + (winnerId === player2Id ? 1 : 0);
-      fetch('/api/obs/frame-transition', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          player1: playerName(player1Id),
-          player2: playerName(player2Id),
-          score: `${p1Wins}-${p2Wins}`,
-          sessionDate: activeSession.date,
-          frameNumber: sessionFrames.length + 1,
-        }),
-      }).catch(e => console.warn('OBS: Frame transition failed', e));
-    }
 
     // Compute head-to-head scores optimistically for the NEXT matchup
     // After recording, winner stays on, loser goes to queue
@@ -403,10 +427,20 @@ export default function HomePage() {
       nextP2Score = sessionFrames.filter(f => f.winnerId === nextP2Id && f.loserId === nextP1Id).length + (winnerId === nextP2Id && loserId === nextP1Id ? 1 : 0);
     }
 
+    // Stop current OBS recording — next recording starts when user taps "Ready"
+    if (recordingEnabled && obsStatus.connected) {
+      fetch('/api/obs/stop-recording', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flags: currentFrameFlags }),
+      }).catch(e => console.warn('OBS: Failed to stop recording', e));
+    }
+    setCurrentFrameFlags([]);
+
     updateOverlay({
       visible: true,
-      playerA: { id: String(nextP1Id), name: playerName(nextP1Id), emoji: playerEmoji(nextP1Id), score: nextP1Score },
-      playerB: { id: String(nextP2Id), name: playerName(nextP2Id), emoji: playerEmoji(nextP2Id), score: nextP2Score },
+      playerA: { id: String(nextP1Id), name: playerName(nextP1Id), nickname: playerNickname(nextP1Id), emoji: playerEmoji(nextP1Id), score: nextP1Score },
+      playerB: { id: String(nextP2Id), name: playerName(nextP2Id), nickname: playerNickname(nextP2Id), emoji: playerEmoji(nextP2Id), score: nextP2Score },
       frameNumber: sessionFrames.length + 2, // +1 for current frame, +1 for next
       lastWinnerId: String(winnerId),
     });
@@ -443,13 +477,42 @@ export default function HomePage() {
     setShowSplash(true);
     playVsSplashSound();
 
+    // Flush feedback/achievements over the splash screen after VS animations settle
+    setTimeout(() => {
+      const fb = pendingFeedback.current;
+      if (fb) {
+        pendingFeedback.current = null;
+        if (fb.type === 'streak' && fb.streak) {
+          playStreakSound(fb.streak);
+        } else {
+          playWinSound();
+        }
+        showFeedback(fb.msg, fb.type);
+      }
+      const ach = pendingAchievement.current;
+      if (ach) {
+        pendingAchievement.current = null;
+        const winToastDuration = fb?.type === 'streak' ? 2500 : 1500;
+        setTimeout(() => showAchievementToast(ach.achievement, ach.playerName), winToastDuration + 200);
+      }
+    }, 1000);
+
     // Fire DB write + refresh in background (don't block the UI)
-    recordFrame(activeSession.id, winnerId, loserId)
+    const startTime = frameStartedAt.current ?? undefined;
+    frameStartedAt.current = null;
+    recordFrame(activeSession.id, winnerId, loserId, startTime)
       .then(() => refresh())
       .catch(e => console.warn('Failed to record frame:', e));
   };
 
-  const handleNewMatchup = () => {
+  const handleNewMatchup = (discard?: boolean) => {
+    // Stop or discard in-progress recording if active
+    if (recordingEnabled && obsStatus.recording) {
+      const endpoint = discard ? '/api/obs/discard-recording' : '/api/obs/stop-recording';
+      fetch(endpoint, { method: 'POST' })
+        .catch(e => console.warn('OBS: Failed to stop/discard recording', e));
+    }
+    setCurrentFrameFlags([]);
     setPlayer1Id(null);
     setPlayer2Id(null);
     setChallengerQueue([]);
@@ -553,7 +616,9 @@ export default function HomePage() {
 
         {monthlyLeaderboard && monthlyLeaderboard.length > 0 && (
           <div className="panel p-4 xl:p-8 2xl:p-10">
-            <h2 className="font-display text-gold text-xl xl:text-3xl 2xl:text-4xl mb-3 xl:mb-6">This Month</h2>
+            <h2 className="font-display text-gold text-xl xl:text-3xl 2xl:text-4xl mb-3 xl:mb-6">
+              {new Date().toLocaleDateString(undefined, { month: 'long' })}
+            </h2>
             <div className="flex flex-col gap-2 xl:gap-4">
               {monthlyLeaderboard.map((entry, i) => {
                 const medal = i === 0 ? 'text-gold glow-gold' : i === 1 ? 'text-silver' : i === 2 ? 'text-bronze' : 'text-chalk-dim';
@@ -561,7 +626,7 @@ export default function HomePage() {
                   <div key={entry.name} className="flex items-center justify-between px-2 py-1 xl:px-4 xl:py-3">
                     <div className="flex items-center gap-3 xl:gap-5">
                       <span className={`text-lg xl:text-3xl 2xl:text-4xl font-bold w-6 xl:w-12 text-center score-num ${medal}`}>{i + 1}</span>
-                      <span className="text-chalk text-lg xl:text-2xl 2xl:text-3xl chalk-text">{entry.emoji ? `${entry.emoji} ` : ''}{entry.name}</span>
+                      <span className="text-chalk text-lg xl:text-2xl 2xl:text-3xl chalk-text">{entry.emoji ? `${entry.emoji} ` : ''}<PlayerName name={entry.name} nickname={entry.nickname} /></span>
                     </div>
                     <div className="flex items-center gap-2 xl:gap-4 text-lg xl:text-2xl 2xl:text-3xl">
                       <span className="text-win font-semibold score-num">{entry.won}W</span>
@@ -593,14 +658,48 @@ export default function HomePage() {
           </button>
         </div>
 
+        {/* Start Session + Record — sticky bar */}
+        <div className="sticky top-0 z-10 -mx-4 xl:-mx-8 2xl:-mx-10 -mt-4 xl:-mt-6 px-4 xl:px-8 2xl:px-10 py-3 xl:py-4 bg-board-dark border-b-2 border-board-light/30 shadow-lg flex items-center gap-3 xl:gap-4">
+          <button
+            onClick={toggleRecording}
+            className={`btn-press flex items-center gap-2 xl:gap-3 px-4 xl:px-6 py-3 xl:py-4 rounded-lg text-base xl:text-xl font-semibold min-h-[48px] xl:min-h-[64px] flex-shrink-0 ${
+              recordingEnabled
+                ? 'bg-loss/15 border border-loss/50 text-loss'
+                : 'border border-board-light/30 text-chalk-dim'
+            }`}
+          >
+            <span className={`inline-flex items-center justify-center w-5 h-5 xl:w-6 xl:h-6 rounded border-2 flex-shrink-0 ${
+              recordingEnabled ? 'border-loss bg-loss/20' : 'border-chalk-dim/50'
+            }`}>
+              {recordingEnabled && <span className="text-loss text-xs xl:text-sm font-black">&#10003;</span>}
+            </span>
+            Record
+          </button>
+          {selectedPlayerIds.length >= 2 ? (
+            <button
+              onClick={handleStartSession}
+              className="btn-press flex-1 py-3 xl:py-4 bg-win text-board-dark text-[22px] xl:text-[36px] 2xl:text-[44px] font-bold rounded-xl min-h-[48px] xl:min-h-[64px] shadow-lg"
+            >
+              Start Session ({selectedPlayerIds.length} players)
+            </button>
+          ) : (
+            <p className="flex-1 text-chalk-dim text-base xl:text-xl text-center italic">
+              Select at least 2 players
+            </p>
+          )}
+        </div>
+
         {players.length === 0 ? (
           <p className="text-chalk-dim text-lg xl:text-2xl text-center py-8">
             No players yet. Add some on the Players tab.
           </p>
         ) : (
           <>
+            <p className="text-chalk-dim text-base xl:text-xl text-center">
+              Tap in playing order. #1 and #2 play first.
+            </p>
             <div className="flex flex-col gap-3 xl:gap-4">
-              {players.map(p => {
+              {sortedPlayers.map(p => {
                 const selected = selectedPlayerIds.includes(p.id!);
                 const order = selected ? selectedPlayerIds.indexOf(p.id!) + 1 : 0;
                 return (
@@ -619,39 +718,12 @@ export default function HomePage() {
                       </span>
                     )}
                     {p.emoji && <span className="text-2xl xl:text-4xl">{p.emoji}</span>}
-                    {p.name}
+                    <PlayerName name={p.name} nickname={p.nickname} />
                   </button>
                 );
               })}
             </div>
-            <p className="text-chalk-dim text-base xl:text-xl text-center">
-              Tap in playing order. #1 and #2 play first.
-            </p>
           </>
-        )}
-
-        {/* Record option on picker screen */}
-        <button
-          onClick={toggleRecording}
-          className={`btn-press w-full py-4 xl:py-6 panel text-lg xl:text-2xl font-semibold min-h-[56px] xl:min-h-[80px] flex items-center justify-center gap-3 xl:gap-4 ${
-            recordingEnabled ? '!border-loss/60 text-loss' : 'text-chalk-dim'
-          }`}
-        >
-          <span className={`inline-flex items-center justify-center w-6 h-6 xl:w-7 xl:h-7 rounded border-2 flex-shrink-0 ${
-            recordingEnabled ? 'border-loss bg-loss/20' : 'border-chalk-dim/50'
-          }`}>
-            {recordingEnabled && <span className="text-loss text-sm xl:text-base font-black">&#10003;</span>}
-          </span>
-          Auto-Record Frames
-        </button>
-
-        {selectedPlayerIds.length >= 2 && (
-          <button
-            onClick={handleStartSession}
-            className="btn-press w-full py-5 xl:py-8 bg-win text-board-dark text-[24px] xl:text-[40px] 2xl:text-[48px] font-bold rounded-xl min-h-[64px] xl:min-h-[96px] shadow-lg mt-2"
-          >
-            Start Session ({selectedPlayerIds.length} players)
-          </button>
         )}
       </div>
     );
@@ -718,7 +790,7 @@ export default function HomePage() {
       `}</style>
       {/* Feedback toast */}
       {feedback && (
-        <div className={`fixed top-4 xl:top-8 left-1/2 -translate-x-1/2 font-bold text-xl xl:text-3xl 2xl:text-4xl px-8 xl:px-14 py-4 xl:py-6 rounded-xl shadow-lg z-50 ${
+        <div className={`fixed top-4 xl:top-8 left-1/2 -translate-x-1/2 font-bold text-xl xl:text-3xl 2xl:text-4xl px-8 xl:px-14 py-4 xl:py-6 rounded-xl shadow-lg z-[60] ${
           feedback.type === 'streak'
             ? 'bg-gold text-board-dark streak-toast'
             : feedback.type === 'win'
@@ -731,7 +803,7 @@ export default function HomePage() {
 
       {/* Achievement toast */}
       {newAchievement && (
-        <div className="fixed top-4 xl:top-8 left-1/2 -translate-x-1/2 bg-gold text-board-dark font-bold text-lg xl:text-2xl px-6 xl:px-10 py-3 xl:py-5 rounded-xl shadow-lg z-50 badge-enter flex items-center gap-3">
+        <div className="fixed top-4 xl:top-8 left-1/2 -translate-x-1/2 bg-gold text-board-dark font-bold text-lg xl:text-2xl px-6 xl:px-10 py-3 xl:py-5 rounded-xl shadow-lg z-[60] badge-enter flex items-center gap-3">
           <span className="text-2xl xl:text-4xl">{newAchievement.achievement.icon}</span>
           <div className="flex flex-col leading-tight">
             <span>{newAchievement.playerName}: {newAchievement.achievement.name}</span>
@@ -779,7 +851,7 @@ export default function HomePage() {
                   className="btn-press w-full min-h-[72px] xl:min-h-[120px] py-4 xl:py-8 px-6 xl:px-10 panel text-[28px] xl:text-[48px] 2xl:text-[60px] font-bold text-chalk flex items-center justify-center gap-3 xl:gap-5"
                 >
                   {playerEmoji(pid) && <span>{playerEmoji(pid)}</span>}
-                  {playerName(pid)}
+                  <PlayerName name={playerName(pid)} nickname={playerNickname(pid)} />
                 </button>
               ))}
             </div>
@@ -789,7 +861,7 @@ export default function HomePage() {
         {/* Selecting Player 2 */}
         {matchStep === 'pickPlayer2' && player1Id !== null && (
           <div className="w-full max-w-lg xl:max-w-3xl 2xl:max-w-5xl flex flex-col items-center gap-4 xl:gap-6">
-            <p className="text-gold text-2xl xl:text-5xl 2xl:text-6xl font-bold glow-gold">{playerEmoji(player1Id) ? `${playerEmoji(player1Id)} ` : ''}{playerName(player1Id)}</p>
+            <p className="text-gold text-2xl xl:text-5xl 2xl:text-6xl font-bold glow-gold">{playerEmoji(player1Id) ? `${playerEmoji(player1Id)} ` : ''}<PlayerName name={playerName(player1Id)} nickname={playerNickname(player1Id)} /></p>
             <p className="text-chalk-dim text-xl xl:text-3xl uppercase tracking-widest font-display">v</p>
             <p className="text-chalk-dim text-xl xl:text-3xl 2xl:text-4xl uppercase tracking-widest font-display">Select Player 2</p>
             <div className="w-full flex flex-col gap-3 xl:gap-5">
@@ -802,7 +874,7 @@ export default function HomePage() {
                     className="btn-press w-full min-h-[72px] xl:min-h-[120px] py-4 xl:py-8 px-6 xl:px-10 panel text-[28px] xl:text-[48px] 2xl:text-[60px] font-bold text-chalk flex items-center justify-center gap-3 xl:gap-5"
                   >
                     {playerEmoji(pid) && <span>{playerEmoji(pid)}</span>}
-                    {playerName(pid)}
+                    <PlayerName name={playerName(pid)} nickname={playerNickname(pid)} />
                   </button>
                 ))}
             </div>
@@ -834,37 +906,46 @@ export default function HomePage() {
             )}
 
             {/* Tap the winner */}
-            <p className="text-chalk-dim text-sm xl:text-xl 2xl:text-2xl uppercase tracking-widest mb-2 xl:mb-4">Tap the winner</p>
+            <p className="text-chalk-dim text-sm xl:text-xl 2xl:text-2xl uppercase tracking-widest mb-1 xl:mb-2">Tap the winner</p>
 
-            <div className="w-full flex items-center justify-center gap-4 xl:gap-8">
-              {/* Player 1 - tap to win */}
-              <button
-                onClick={() => handleRecordWinner(player1Id)}
-                className="btn-press flex-1 max-w-[45%] py-8 xl:py-14 2xl:py-18 panel !border-2 !border-board-light active:!border-win"
-              >
-                {playerEmoji(player1Id) && (
-                  <span className="text-[clamp(32px,6vw,80px)] block text-center mb-1">{playerEmoji(player1Id)}</span>
-                )}
-                <span className="text-[clamp(28px,5vw,100px)] font-black text-chalk chalk-text block text-center leading-tight">
-                  {playerName(player1Id)}
-                </span>
-              </button>
+            {(() => {
+              const eitherHasEmoji = !!(playerEmoji(player1Id) || playerEmoji(player2Id));
+              return (
+                <div className="w-full flex items-stretch justify-center gap-4 xl:gap-8">
+                  {/* Player 1 - tap to win */}
+                  <button
+                    onClick={() => handleRecordWinner(player1Id)}
+                    className={`btn-press flex-1 max-w-[45%] py-5 xl:py-10 2xl:py-14 panel !border-2 active:!border-win flex flex-col items-center justify-center ${winnerFlash === player1Id ? 'winner-flash !border-win' : '!border-board-light'}`}
+                  >
+                    {eitherHasEmoji && (
+                      <span className="text-[clamp(32px,6vw,80px)] block text-center mb-1 min-h-[1em]">{playerEmoji(player1Id) || '\u00A0'}</span>
+                    )}
+                    <PlayerName
+                      name={playerName(player1Id)}
+                      nickname={playerNickname(player1Id)}
+                      className="text-[clamp(28px,5vw,100px)] font-black text-chalk chalk-text block text-center leading-tight"
+                    />
+                  </button>
 
-              <span className="text-chalk-dim text-[clamp(24px,3vw,72px)] font-bold font-display">v</span>
+                  <span className="text-chalk-dim text-[clamp(24px,3vw,72px)] font-bold font-display flex items-center">v</span>
 
-              {/* Player 2 - tap to win */}
-              <button
-                onClick={() => handleRecordWinner(player2Id)}
-                className="btn-press flex-1 max-w-[45%] py-8 xl:py-14 2xl:py-18 panel !border-2 !border-board-light active:!border-win"
-              >
-                {playerEmoji(player2Id) && (
-                  <span className="text-[clamp(32px,6vw,80px)] block text-center mb-1">{playerEmoji(player2Id)}</span>
-                )}
-                <span className="text-[clamp(28px,5vw,100px)] font-black text-chalk chalk-text block text-center leading-tight">
-                  {playerName(player2Id)}
-                </span>
-              </button>
-            </div>
+                  {/* Player 2 - tap to win */}
+                  <button
+                    onClick={() => handleRecordWinner(player2Id)}
+                    className={`btn-press flex-1 max-w-[45%] py-5 xl:py-10 2xl:py-14 panel !border-2 active:!border-win flex flex-col items-center justify-center ${winnerFlash === player2Id ? 'winner-flash !border-win' : '!border-board-light'}`}
+                  >
+                    {eitherHasEmoji && (
+                      <span className="text-[clamp(32px,6vw,80px)] block text-center mb-1 min-h-[1em]">{playerEmoji(player2Id) || '\u00A0'}</span>
+                    )}
+                    <PlayerName
+                      name={playerName(player2Id)}
+                      nickname={playerNickname(player2Id)}
+                      className="text-[clamp(28px,5vw,100px)] font-black text-chalk chalk-text block text-center leading-tight"
+                    />
+                  </button>
+                </div>
+              );
+            })()}
 
             {/* Head-to-head for current matchup */}
             {(() => {
@@ -880,25 +961,104 @@ export default function HomePage() {
               );
             })()}
 
+            {/* Frame flags — tag the current recording */}
+            {recordingEnabled && obsStatus.recording && (
+              <div className="flex items-center gap-2 xl:gap-3 mt-2 xl:mt-3">
+                {ALL_FLAGS.map((flag) => {
+                  const cfg = FLAG_CONFIG[flag];
+                  const active = currentFrameFlags.includes(flag);
+                  return (
+                    <button
+                      key={`${flag}-${flagPopKey}`}
+                      onClick={() => {
+                        setCurrentFrameFlags(prev =>
+                          prev.includes(flag)
+                            ? prev.filter(f => f !== flag)
+                            : [...prev, flag],
+                        );
+                        setFlagPopKey(k => k + 1);
+                      }}
+                      className={`btn-press text-sm xl:text-lg font-semibold px-3 xl:px-5 py-1.5 xl:py-2 rounded-full transition-all min-h-[36px] xl:min-h-[44px] flag-pop ${
+                        active
+                          ? `${cfg.bg} ${cfg.text}`
+                          : 'bg-white/5 text-chalk-dim/40'
+                      }`}
+                    >
+                      {cfg.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Next up queue */}
             {challengerQueue.length > 0 && (
-              <div className="mt-3 xl:mt-6 flex items-center gap-2 xl:gap-4 flex-wrap justify-center">
+              <div className="mt-2 xl:mt-3 flex items-center gap-2 xl:gap-4 flex-wrap justify-center">
                 <span className="text-chalk-dim text-base xl:text-xl 2xl:text-2xl uppercase tracking-wider font-display">Next up:</span>
                 {challengerQueue.map((pid, i) => (
                   <span key={pid} className={`text-base xl:text-xl 2xl:text-2xl font-semibold ${i === 0 ? 'text-gold glow-gold' : 'text-chalk-dim'}`}>
-                    {playerEmoji(pid) ? `${playerEmoji(pid)} ` : ''}{playerName(pid)}{i < challengerQueue.length - 1 ? ',' : ''}
+                    {playerEmoji(pid) ? `${playerEmoji(pid)} ` : ''}<PlayerName name={playerName(pid)} nickname={playerNickname(pid)} />{i < challengerQueue.length - 1 ? ',' : ''}
                   </span>
                 ))}
               </div>
             )}
 
-            {/* Change matchup button */}
-            <button
-              onClick={handleNewMatchup}
-              className="btn-press mt-3 xl:mt-6 px-6 xl:px-10 py-3 xl:py-5 panel-wood text-chalk-dim text-lg xl:text-2xl font-semibold min-h-[56px] xl:min-h-[80px]"
-            >
-              Change Players
-            </button>
+            {/* Action buttons row */}
+            <div className="flex items-center gap-3 xl:gap-5 mt-2 xl:mt-3">
+              {confirmChangePlayers ? (
+                <>
+                  <button
+                    onClick={() => { setConfirmChangePlayers(false); handleNewMatchup(false); }}
+                    className="btn-press px-6 xl:px-10 py-3 xl:py-5 panel text-win text-lg xl:text-2xl font-bold min-h-[56px] xl:min-h-[80px]"
+                  >
+                    Keep Recording
+                  </button>
+                  <button
+                    onClick={() => { setConfirmChangePlayers(false); handleNewMatchup(true); }}
+                    className="btn-press px-6 xl:px-10 py-3 xl:py-5 bg-loss text-board-dark text-lg xl:text-2xl font-bold rounded-lg min-h-[56px] xl:min-h-[80px]"
+                  >
+                    Discard Recording
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (recordingEnabled && obsStatus.recording) {
+                      setConfirmChangePlayers(true);
+                    } else {
+                      handleNewMatchup();
+                    }
+                  }}
+                  className="btn-press px-6 xl:px-10 py-3 xl:py-5 panel-wood text-chalk-dim text-lg xl:text-2xl font-semibold min-h-[56px] xl:min-h-[80px]"
+                >
+                  Change Players
+                </button>
+              )}
+
+              {/* VAR Review button — only when actively recording */}
+              {recordingEnabled && obsStatus.recording && !varReviewing && (
+                <button
+                  onClick={async () => {
+                    setVarReviewing(true);
+                    try {
+                      const res = await fetch('/api/var/review', { method: 'POST' });
+                      if (!res.ok) {
+                        const body = await res.json().catch(() => ({}));
+                        throw new Error(body.error || `HTTP ${res.status}`);
+                      }
+                      const data = await res.json();
+                      setVarVideoPath(data.videoFilePath);
+                    } catch (e) {
+                      console.warn('VAR: Failed to stop recording for review', e);
+                      setVarReviewing(false);
+                    }
+                  }}
+                  className="btn-press px-6 xl:px-10 py-3 xl:py-5 min-h-[56px] xl:min-h-[80px] rounded-xl text-lg xl:text-2xl font-black uppercase tracking-wider border-2 border-amber-500 bg-amber-500/10 text-amber-400"
+                >
+                  VAR
+                </button>
+              )}
+            </div>
 
           </div>
         )}
@@ -959,7 +1119,7 @@ export default function HomePage() {
                     className="btn-press py-3 xl:py-5 px-5 xl:px-8 panel text-chalk text-lg xl:text-2xl font-semibold min-h-[48px] xl:min-h-[72px] flex items-center gap-2"
                   >
                     {p.emoji && <span>{p.emoji}</span>}
-                    {p.name}
+                    <PlayerName name={p.name} nickname={p.nickname} />
                   </button>
                 ))}
               </div>
@@ -974,7 +1134,7 @@ export default function HomePage() {
             {runningTotals.map(p => (
               <div key={p.id} className="flex items-center gap-1.5 xl:gap-3">
                 {playerEmoji(p.id) && <span className="text-base xl:text-xl">{playerEmoji(p.id)}</span>}
-                <span className="text-chalk font-semibold text-base xl:text-xl 2xl:text-2xl truncate chalk-text">{p.name}</span>
+                <PlayerName name={p.name} nickname={playerNickname(p.id)} className="text-chalk font-semibold text-base xl:text-xl 2xl:text-2xl truncate chalk-text" />
                 <AnimatedNumber value={p.frames} className="text-gold font-black text-xl xl:text-3xl 2xl:text-4xl score-num" />
               </div>
             ))}
@@ -1042,42 +1202,101 @@ export default function HomePage() {
               Record
             </button>
 
-            {confirmEnd ? (
-              <>
-                <button
-                  onClick={handleEndSession}
-                  className="btn-press py-2 xl:py-3 px-3 xl:px-5 bg-loss text-board-dark text-sm xl:text-lg font-bold rounded-lg min-h-[40px] xl:min-h-[56px]"
-                >
-                  Confirm End
-                </button>
-                <button
-                  onClick={() => setConfirmEnd(false)}
-                  className="btn-press py-2 xl:py-3 px-3 xl:px-5 panel text-chalk-dim text-sm xl:text-lg font-bold min-h-[40px] xl:min-h-[56px]"
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => setConfirmEnd(true)}
-                className="btn-press py-2 xl:py-3 px-3 xl:px-5 panel text-chalk-dim text-sm xl:text-lg font-semibold min-h-[40px] xl:min-h-[56px]"
-              >
-                End Session
-              </button>
-            )}
+            <button
+              onClick={() => setConfirmEnd(true)}
+              className="btn-press py-2 xl:py-3 px-3 xl:px-5 panel text-chalk-dim text-sm xl:text-lg font-semibold min-h-[40px] xl:min-h-[56px]"
+            >
+              End Session
+            </button>
           </div>
         </div>
       </div>
 
+      {/* VAR Review modal */}
+      {varReviewing && varVideoPath && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90">
+          <div className="relative w-[95vw] max-w-5xl flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="bg-amber-500 text-board-dark font-black text-lg xl:text-2xl px-3 py-1 rounded">VAR REVIEW</span>
+                <span className="text-chalk-dim text-base xl:text-xl">Scrub through to review the incident</span>
+              </div>
+            </div>
+
+            <video
+              controls
+              autoPlay
+              className="w-full rounded bg-black"
+              src={`${import.meta.env.VITE_API_URL ?? 'http://localhost:4077'}/api/recordings/stream?path=${encodeURIComponent(varVideoPath)}`}
+            />
+
+            <button
+              onClick={async () => {
+                if (!activeSession || player1Id === null || player2Id === null) return;
+                try {
+                  const res = await fetch('/api/var/resume', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      player1: playerName(player1Id),
+                      player2: playerName(player2Id),
+                      sessionDate: activeSession.date,
+                      frameNumber: sessionFrames.length + 1,
+                    }),
+                  });
+                  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                } catch (e) {
+                  console.warn('VAR: Failed to resume recording', e);
+                }
+                setVarReviewing(false);
+                setVarVideoPath(null);
+              }}
+              className="btn-press w-full py-4 xl:py-6 rounded-xl text-xl xl:text-3xl font-bold border-2 border-win bg-win/10 text-win min-h-[56px] xl:min-h-[80px]"
+            >
+              Resume Recording
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* End Session confirmation modal */}
+      {confirmEnd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="panel p-8 xl:p-12 max-w-md xl:max-w-lg w-[90vw] flex flex-col items-center gap-6 xl:gap-8 !border-loss/30">
+            <h2 className="font-display text-2xl xl:text-4xl text-chalk chalk-text text-center">End Session?</h2>
+            <p className="text-chalk-dim text-base xl:text-xl text-center">
+              {sessionFrames.length} frame{sessionFrames.length !== 1 ? 's' : ''} played.
+              {recordingEnabled && obsStatus.recording && ' Recording will be stopped.'}
+            </p>
+            <div className="flex gap-4 xl:gap-6 w-full">
+              <button
+                onClick={() => setConfirmEnd(false)}
+                className="btn-press flex-1 py-4 xl:py-6 panel text-chalk text-lg xl:text-2xl font-bold min-h-[56px] xl:min-h-[80px]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEndSession}
+                className="btn-press flex-1 py-4 xl:py-6 bg-loss text-board-dark text-lg xl:text-2xl font-bold rounded-xl min-h-[56px] xl:min-h-[80px]"
+              >
+                End Session
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* VS Splash overlay */}
       {showSplash && player1Id !== null && player2Id !== null && (
         <VsSplash
-          player1={{ name: playerName(player1Id), emoji: playerEmoji(player1Id) }}
-          player2={{ name: playerName(player2Id), emoji: playerEmoji(player2Id) }}
+          player1={{ name: playerName(player1Id), nickname: playerNickname(player1Id), emoji: playerEmoji(player1Id) }}
+          player2={{ name: playerName(player2Id), nickname: playerNickname(player2Id), emoji: playerEmoji(player2Id) }}
           h2h={allTimeH2H}
           onDismiss={() => {
             setShowSplash(false);
-            // Flush any pending feedback/achievement that was queued during the splash
+            // Mark the frame as started now
+            frameStartedAt.current = new Date();
+            // Fallback: flush any notifications not yet shown (e.g. if Ready was tapped very fast)
             if (pendingFeedback.current) {
               const fb = pendingFeedback.current;
               pendingFeedback.current = null;
@@ -1091,9 +1310,32 @@ export default function HomePage() {
             if (pendingAchievement.current) {
               const ach = pendingAchievement.current;
               pendingAchievement.current = null;
-              const winToastDuration = feedback?.type === 'streak' ? 2500 : 1500;
-              setTimeout(() => showAchievementToast(ach.achievement, ach.playerName), winToastDuration + 200);
+              showAchievementToast(ach.achievement, ach.playerName);
             }
+            // Start OBS recording for this frame
+            if (recordingEnabled && activeSession && player1Id !== null && player2Id !== null) {
+              const p1Wins = sessionFrames.filter(f => f.winnerId === player1Id && f.loserId === player2Id).length;
+              const p2Wins = sessionFrames.filter(f => f.winnerId === player2Id && f.loserId === player1Id).length;
+              fetch('/api/obs/frame-transition', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  player1: playerName(player1Id),
+                  player2: playerName(player2Id),
+                  player1Nickname: playerNickname(player1Id) ?? null,
+                  player2Nickname: playerNickname(player2Id) ?? null,
+                  score: `${p1Wins}-${p2Wins}`,
+                  sessionDate: activeSession.date,
+                  frameNumber: sessionFrames.length + 1,
+                }),
+              }).catch(e => console.warn('OBS: Failed to start recording', e));
+            }
+          }}
+          onEndSession={() => {
+            setShowSplash(false);
+            pendingFeedback.current = null;
+            pendingAchievement.current = null;
+            handleEndSession();
           }}
         />
       )}

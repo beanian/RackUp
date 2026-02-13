@@ -213,44 +213,54 @@ export default function SessionDetailPage() {
         <section>
           <h2 className="font-display text-xl xl:text-3xl 2xl:text-4xl text-chalk chalk-text mb-3 xl:mb-6">Head-to-Head</h2>
           <div className="flex flex-col gap-2 xl:gap-4">
-            {headToHeads.map((h, i) => (
-              <div
-                key={i}
-                className="panel p-4 xl:p-6 flex items-center"
-              >
-                <span
-                  className={`flex-1 text-lg xl:text-2xl 2xl:text-3xl font-semibold text-right pr-3 xl:pr-6 ${
-                    h.player1Wins > h.player2Wins ? 'text-win' : 'text-chalk'
-                  }`}
+            {headToHeads.map((h, i) => {
+              const p1Dominant = h.player1Wins > h.player2Wins;
+              const p2Dominant = h.player2Wins > h.player1Wins;
+              const total = h.player1Wins + h.player2Wins;
+              const dominantPct = total > 0
+                ? Math.round((Math.max(h.player1Wins, h.player2Wins) / total) * 100)
+                : 0;
+              return (
+                <div
+                  key={i}
+                  className={`panel p-4 xl:p-6 flex items-center ${p1Dominant || p2Dominant ? 'border-win/20' : ''}`}
                 >
-                  {h.player1}
-                </span>
-                <div className="flex items-baseline gap-2 xl:gap-4 px-3 xl:px-6 border-x border-board-light/30">
                   <span
-                    className={`font-bold text-2xl xl:text-4xl 2xl:text-5xl score-num ${
-                      h.player1Wins > h.player2Wins ? 'text-win' : 'text-chalk'
+                    className={`flex-1 text-lg xl:text-2xl 2xl:text-3xl font-semibold text-right pr-3 xl:pr-6 ${
+                      p1Dominant ? 'text-win' : 'text-chalk'
                     }`}
                   >
-                    {h.player1Wins}
+                    {p1Dominant && dominantPct >= 60 && <span className="text-gold mr-1 xl:mr-2 text-base xl:text-lg">&#9733;</span>}
+                    {h.player1}
                   </span>
-                  <span className="text-chalk-dim text-sm xl:text-xl">-</span>
+                  <div className="flex items-baseline gap-2 xl:gap-4 px-3 xl:px-6 border-x border-board-light/30">
+                    <span
+                      className={`font-bold text-2xl xl:text-4xl 2xl:text-5xl score-num ${
+                        p1Dominant ? 'text-win' : 'text-chalk'
+                      }`}
+                    >
+                      {h.player1Wins}
+                    </span>
+                    <span className="text-chalk-dim text-sm xl:text-xl">-</span>
+                    <span
+                      className={`font-bold text-2xl xl:text-4xl 2xl:text-5xl score-num ${
+                        p2Dominant ? 'text-win' : 'text-chalk'
+                      }`}
+                    >
+                      {h.player2Wins}
+                    </span>
+                  </div>
                   <span
-                    className={`font-bold text-2xl xl:text-4xl 2xl:text-5xl score-num ${
-                      h.player2Wins > h.player1Wins ? 'text-win' : 'text-chalk'
+                    className={`flex-1 text-lg xl:text-2xl 2xl:text-3xl font-semibold pl-3 xl:pl-6 ${
+                      p2Dominant ? 'text-win' : 'text-chalk'
                     }`}
                   >
-                    {h.player2Wins}
+                    {h.player2}
+                    {p2Dominant && dominantPct >= 60 && <span className="text-gold ml-1 xl:ml-2 text-base xl:text-lg">&#9733;</span>}
                   </span>
                 </div>
-                <span
-                  className={`flex-1 text-lg xl:text-2xl 2xl:text-3xl font-semibold pl-3 xl:pl-6 ${
-                    h.player2Wins > h.player1Wins ? 'text-win' : 'text-chalk'
-                  }`}
-                >
-                  {h.player2}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -260,28 +270,68 @@ export default function SessionDetailPage() {
         <h2 className="font-display text-xl xl:text-3xl 2xl:text-4xl text-chalk chalk-text mb-3 xl:mb-6">
           Frames ({frames.length})
         </h2>
-        <div className="flex flex-col gap-2 xl:gap-4">
-          {frames.map((f, i) => (
-            <div
-              key={f.id}
-              className="panel p-4 xl:p-6 flex items-center"
-            >
-              <span className="text-chalk-dim font-bold text-lg xl:text-2xl w-10 xl:w-16 text-center score-num">
-                {i + 1}
-              </span>
-              <div className="flex-1 ml-3 xl:ml-6">
-                <p className="text-chalk text-lg xl:text-2xl 2xl:text-3xl">
-                  <span className="text-win font-semibold">
-                    {getName(f.winnerId)}
+        <div className="flex flex-col">
+          {frames.map((f, i) => {
+            const startTime = f.startedAt
+              ? new Date(f.startedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+              : null;
+            let duration: string | null = null;
+            if (f.startedAt) {
+              const secs = Math.round((new Date(f.recordedAt).getTime() - new Date(f.startedAt).getTime()) / 1000);
+              if (secs >= 3600) {
+                const h = Math.floor(secs / 3600);
+                const m = Math.floor((secs % 3600) / 60);
+                duration = `${h}h ${m}m`;
+              } else {
+                const m = Math.floor(secs / 60);
+                const s = secs % 60;
+                duration = m > 0 ? `${m}m ${s}s` : `${s}s`;
+              }
+            }
+            const isLast = i === frames.length - 1;
+            return (
+              <div key={f.id} className="flex">
+                {/* Timeline column */}
+                <div className="flex flex-col items-center w-10 xl:w-16 flex-shrink-0">
+                  <div className={`w-4 h-4 xl:w-5 xl:h-5 rounded-full border-2 flex-shrink-0 ${
+                    i === 0 ? 'border-gold bg-gold/30' : 'border-chalk-dim/40 bg-board-dark'
+                  }`} />
+                  {!isLast && (
+                    <div className="w-0.5 flex-1 bg-board-light/30" />
+                  )}
+                </div>
+                {/* Frame content */}
+                <div className={`flex-1 panel p-4 xl:p-6 flex items-center ${!isLast ? 'mb-2 xl:mb-4' : ''}`}>
+                  <span className="text-chalk-dim font-bold text-lg xl:text-2xl w-8 xl:w-12 text-center score-num">
+                    {i + 1}
                   </span>
-                  <span className="text-chalk-dim mx-2 xl:mx-4">beat</span>
-                  <span className="text-loss font-semibold">
-                    {getName(f.loserId)}
-                  </span>
-                </p>
+                  <div className="flex-1 ml-3 xl:ml-6 flex items-center">
+                    <p className="text-chalk text-lg xl:text-2xl 2xl:text-3xl flex-1">
+                      <span className="text-win font-semibold">
+                        {getName(f.winnerId)}
+                      </span>
+                      <span className="text-chalk-dim mx-2 xl:mx-4">beat</span>
+                      <span className="text-loss font-semibold">
+                        {getName(f.loserId)}
+                      </span>
+                    </p>
+                    {startTime && (
+                      <div className="text-right ml-4 xl:ml-6">
+                        <span className="text-chalk-dim text-xs xl:text-sm uppercase tracking-wider">Started</span>
+                        <p className="text-chalk text-sm xl:text-lg font-semibold">{startTime}</p>
+                      </div>
+                    )}
+                    {duration && (
+                      <div className="text-right ml-4 xl:ml-6">
+                        <span className="text-chalk-dim text-xs xl:text-sm uppercase tracking-wider">Duration</span>
+                        <p className="text-chalk text-sm xl:text-lg font-semibold">{duration}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {frames.length === 0 && (
             <p className="text-chalk-dim text-lg xl:text-2xl text-center py-4">
               No frames recorded in this session.
