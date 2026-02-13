@@ -87,16 +87,20 @@ export default function PlayerStatsPage() {
   }, [selectedPlayerId, allFrames, allSessions]);
 
   // Achievements
-  const unlockedIds = useMemo(() => {
-    if (!achCacheReady || selectedPlayerId === null) return new Set<string>();
-    return new Set(getUnlockedForPlayer(selectedPlayerId).map(u => u.id));
+  const unlockedMap = useMemo(() => {
+    if (!achCacheReady || selectedPlayerId === null) return new Map<string, number>();
+    const map = new Map<string, number>();
+    for (const u of getUnlockedForPlayer(selectedPlayerId)) {
+      map.set(u.id, u.unlockedAt);
+    }
+    return map;
   }, [achCacheReady, selectedPlayerId, allFrames]);
 
   const unlockedCount = useMemo(() => {
     let c = 0;
-    for (const ach of ACHIEVEMENTS) { if (unlockedIds.has(ach.id)) c++; }
+    for (const ach of ACHIEVEMENTS) { if (unlockedMap.has(ach.id)) c++; }
     return c;
-  }, [unlockedIds]);
+  }, [unlockedMap]);
 
   if (players.length === 0) {
     return (
@@ -248,7 +252,8 @@ export default function PlayerStatsPage() {
             <div className="panel p-3">
               <div className="grid grid-cols-3 gap-2">
                 {ACHIEVEMENTS.map((ach) => {
-                  const unlocked = unlockedIds.has(ach.id);
+                  const unlockedAt = unlockedMap.get(ach.id);
+                  const unlocked = unlockedAt !== undefined;
                   return (
                     <div
                       key={ach.id}
@@ -265,6 +270,11 @@ export default function PlayerStatsPage() {
                       <span className="text-[9px] text-chalk-dim mt-0.5 leading-tight">
                         {ach.description}
                       </span>
+                      {unlocked && (
+                        <span className="text-[8px] text-gold/60 mt-0.5 leading-tight">
+                          {new Date(unlockedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      )}
                     </div>
                   );
                 })}

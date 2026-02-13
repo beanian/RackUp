@@ -233,16 +233,20 @@ function PlayerStatsView({
     }
   }, [achCacheReady, selectedPlayerId, allFrames, allSessions]);
 
-  const unlockedIds = useMemo(() => {
-    if (!achCacheReady || selectedPlayerId === null) return new Set<string>();
-    return new Set(getUnlockedForPlayer(selectedPlayerId).map(u => u.id));
+  const unlockedMap = useMemo(() => {
+    if (!achCacheReady || selectedPlayerId === null) return new Map<string, number>();
+    const map = new Map<string, number>();
+    for (const u of getUnlockedForPlayer(selectedPlayerId)) {
+      map.set(u.id, u.unlockedAt);
+    }
+    return map;
   }, [achCacheReady, selectedPlayerId, allFrames]); // re-derive when frames change
 
   const unlockedCount = useMemo(() => {
     let c = 0;
-    for (const ach of ACHIEVEMENTS) { if (unlockedIds.has(ach.id)) c++; }
+    for (const ach of ACHIEVEMENTS) { if (unlockedMap.has(ach.id)) c++; }
     return c;
-  }, [unlockedIds]);
+  }, [unlockedMap]);
 
   if (players.length === 0) {
     return (
@@ -400,7 +404,8 @@ function PlayerStatsView({
             <div className="panel p-5 xl:p-8">
               <div className="grid grid-cols-3 gap-3 xl:gap-4">
                 {ACHIEVEMENTS.map((ach) => {
-                  const unlocked = unlockedIds.has(ach.id);
+                  const unlockedAt = unlockedMap.get(ach.id);
+                  const unlocked = unlockedAt !== undefined;
                   return (
                     <div
                       key={ach.id}
@@ -417,6 +422,11 @@ function PlayerStatsView({
                       <span className="text-[10px] xl:text-xs text-chalk-dim mt-0.5 leading-tight">
                         {ach.description}
                       </span>
+                      {unlocked && (
+                        <span className="text-[9px] xl:text-[10px] text-gold/60 mt-1 leading-tight">
+                          {new Date(unlockedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      )}
                     </div>
                   );
                 })}
