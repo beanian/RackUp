@@ -116,6 +116,7 @@ describe('mapFrame', () => {
       recorded_at: '2025-06-15T19:15:00.000Z',
       video_file_path: null,
       started_at: null,
+      brush: false,
     };
 
     const frame = mapFrame(row);
@@ -128,6 +129,7 @@ describe('mapFrame', () => {
       recordedAt: new Date('2025-06-15T19:15:00.000Z'),
       videoFilePath: undefined,
       startedAt: undefined,
+      brush: false,
     });
   });
 
@@ -140,6 +142,7 @@ describe('mapFrame', () => {
       recorded_at: '2025-08-20T22:45:30.500Z',
       video_file_path: null,
       started_at: null,
+      brush: false,
     };
 
     const frame = mapFrame(row);
@@ -159,6 +162,7 @@ describe('mapFrame', () => {
       recorded_at: '2025-01-01T00:00:00.000Z',
       video_file_path: null,
       started_at: null,
+      brush: false,
     };
 
     const frame = mapFrame(row);
