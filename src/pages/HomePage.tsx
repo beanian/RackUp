@@ -487,6 +487,9 @@ export default function HomePage() {
       nextP2Score = sessionFrames.filter(f => f.winnerId === nextP2Id && f.loserId === nextP1Id).length + (winnerId === nextP2Id && loserId === nextP1Id ? 1 : 0);
     }
 
+    // Capture brush flag before clearing (used for DB write + achievements)
+    const isBrush = currentFrameFlags.includes('brush');
+
     // Stop current OBS recording — next recording starts when user taps "Ready"
     if (recordingEnabled && obsStatus.connected) {
       fetch('/api/obs/stop-recording', {
@@ -507,7 +510,7 @@ export default function HomePage() {
 
     // Optimistic UI update — move players immediately, write to DB in background
     // Compute streak on optimistic frames
-    const optimisticFrames: Frame[] = [...sessionFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date() } as Frame];
+    const optimisticFrames: Frame[] = [...sessionFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date(), brush: isBrush } as Frame];
     const streak = getWinStreak(optimisticFrames, winnerId);
     const streakMsg = getStreakMessage(streak);
 
@@ -518,11 +521,16 @@ export default function HomePage() {
       pendingFeedback.current = { msg: `${playerName(winnerId)} wins!`, type: 'win' };
     }
 
-    // Check session-scoped achievements
-    const optimisticAllFrames = [...allFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date() } as Frame];
+    // Check session-scoped achievements for winner (and loser for brush achievements)
+    const optimisticAllFrames = [...allFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date(), brush: isBrush } as Frame];
     const newAchs = checkAndUnlock(winnerId, optimisticAllFrames, [], optimisticFrames, monthlyTopId);
     if (newAchs.length > 0) {
       pendingAchievement.current = { achievement: newAchs[0], playerName: playerName(winnerId) };
+    }
+    // Also check loser so brush-related achievements trigger in real-time
+    const loserAchs = checkAndUnlock(loserId, optimisticAllFrames, [], optimisticFrames, monthlyTopId);
+    if (loserAchs.length > 0 && !pendingAchievement.current) {
+      pendingAchievement.current = { achievement: loserAchs[0], playerName: playerName(loserId) };
     }
 
     if (challengerQueue.length > 0) {
@@ -560,7 +568,7 @@ export default function HomePage() {
     // Fire DB write + refresh in background (don't block the UI)
     const startTime = frameStartedAt.current ?? undefined;
     frameStartedAt.current = null;
-    recordFrame(activeSession.id, winnerId, loserId, startTime)
+    recordFrame(activeSession.id, winnerId, loserId, startTime, undefined, isBrush)
       .then(() => refresh())
       .catch(e => console.warn('Failed to record frame:', e));
   };
