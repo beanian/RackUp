@@ -874,7 +874,7 @@ export default function HomePage() {
           <span className="text-2xl xl:text-4xl">{newAchievement.achievement.icon}</span>
           <div className="flex flex-col leading-tight">
             <span>{newAchievement.playerName}: {newAchievement.achievement.name}</span>
-            <span className="text-sm xl:text-base font-semibold opacity-80">Achievement unlocked!</span>
+            <span className="text-sm xl:text-base font-semibold opacity-80">{newAchievement.achievement.description}</span>
           </div>
         </div>
       )}
