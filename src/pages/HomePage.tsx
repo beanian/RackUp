@@ -10,7 +10,7 @@ import {
 } from '../db/services';
 import { useHomeData } from '../hooks/useHomeData';
 import { useObsStatus } from '../hooks/useObsStatus';
-import { playWinSound, playStreakSound, playSessionEndFanfare, playVsSplashSound, isSoundEnabled, setSoundEnabled } from '../utils/sounds';
+import { playWinSound, playStreakSound, playSessionEndFanfare, playVsSplashSound, playLastOrdersSound, isSoundEnabled, setSoundEnabled } from '../utils/sounds';
 import VsSplash from '../components/VsSplash';
 import { getWinStreak, getStreakMessage } from '../utils/streaks';
 import { checkAndUnlock, type Achievement } from '../utils/achievements';
@@ -87,6 +87,14 @@ export default function HomePage() {
   const [updateProgress, setUpdateProgress] = useState<{ step: string; status?: string; output?: string; error?: string; newVersion?: string; success?: boolean }[]>([]);
   const [liveVersion, setLiveVersion] = useState(typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev');
 
+  // ── Live Clock ──
+  const [clockTime, setClockTime] = useState(() => {
+    const now = new Date();
+    return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  });
+  const [lastOrdersAlert, setLastOrdersAlert] = useState(false);
+  const lastOrdersFired = useRef(false);
+
   // ── Data ──
 
   const {
@@ -98,6 +106,24 @@ export default function HomePage() {
     monthlyLeaderboard,
     refresh,
   } = useHomeData();
+
+  // Clock tick + 12:30 AM "last orders" alert
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setClockTime(`${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`);
+
+      if (now.getHours() === 0 && now.getMinutes() === 30 && activeSession && !lastOrdersFired.current) {
+        lastOrdersFired.current = true;
+        setLastOrdersAlert(true);
+        playLastOrdersSound();
+        setTimeout(() => playLastOrdersSound(), 2000);
+        setTimeout(() => setLastOrdersAlert(false), 15000);
+      }
+    };
+    const id = setInterval(tick, 10_000);
+    return () => clearInterval(id);
+  }, [activeSession]);
 
   // Persist match state to localStorage whenever it changes
   useEffect(() => {
@@ -874,6 +900,20 @@ export default function HomePage() {
         </div>
       )}
 
+      {/* Last orders alert */}
+      {lastOrdersAlert && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center pointer-events-none"
+          style={{ animation: 'pulse 1.5s ease-in-out infinite' }}
+        >
+          <div className="bg-loss text-chalk font-display text-3xl xl:text-5xl 2xl:text-6xl px-10 xl:px-16 py-6 xl:py-10 rounded-2xl shadow-2xl text-center pointer-events-auto border-4 border-gold">
+            <div className="text-5xl xl:text-7xl mb-2">🕧</div>
+            <div className="tracking-wide">LAST ORDERS!</div>
+            <div className="text-lg xl:text-2xl mt-2 font-bold opacity-80">Time to wrap up the session</div>
+          </div>
+        </div>
+      )}
+
       {/* Achievement toast */}
       {newAchievement && (
         <div className="fixed top-4 xl:top-8 left-1/2 -translate-x-1/2 bg-gold text-board-dark font-bold text-lg xl:text-2xl px-6 xl:px-10 py-3 xl:py-5 rounded-xl shadow-lg z-[60] badge-enter flex items-center gap-3">
@@ -915,6 +955,7 @@ export default function HomePage() {
         <div className="text-chalk-dim text-sm xl:text-xl 2xl:text-2xl text-right ml-auto">
           <span>Players: <span className="text-chalk font-bold score-num">{activeSession?.playerIds.length ?? 0}</span></span>
           <span className="ml-3 xl:ml-6">Frames: <AnimatedNumber value={totalFrames} className="text-chalk font-bold score-num" /></span>
+          <span className="ml-4 xl:ml-8 text-chalk text-2xl xl:text-4xl 2xl:text-5xl font-black score-num tracking-wide">{clockTime}</span>
         </div>
       </div>
 

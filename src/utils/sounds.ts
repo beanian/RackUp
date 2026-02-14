@@ -73,6 +73,29 @@ export async function playStreakSound(streak: number): Promise<void> {
   }
 }
 
+export async function playLastOrdersSound(): Promise<void> {
+  if (!isSoundEnabled()) return;
+  const ac = await getCtx();
+  const now = ac.currentTime;
+
+  // Attention chime — three descending bell tones, repeated twice
+  const pattern = [880, 784, 660];
+  for (let r = 0; r < 2; r++) {
+    const offset = r * 0.8;
+    for (let i = 0; i < pattern.length; i++) {
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(pattern[i], now + offset + i * 0.2);
+      gain.gain.setValueAtTime(0.25, now + offset + i * 0.2);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + i * 0.2 + 0.4);
+      osc.connect(gain).connect(ac.destination);
+      osc.start(now + offset + i * 0.2);
+      osc.stop(now + offset + i * 0.2 + 0.45);
+    }
+  }
+}
+
 let vsSplashAudio: HTMLAudioElement | null = null;
 
 export function playVsSplashSound(): void {
