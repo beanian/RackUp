@@ -2,11 +2,14 @@ import type { Frame, Session } from '../db/supabase';
 import { supabase } from '../db/supabase';
 import { getMaxStreak } from './streaks';
 
+export type AchievementCategory = 'honour' | 'shame';
+
 export interface Achievement {
   id: string;
   name: string;
   icon: string;
   description: string;
+  category: AchievementCategory;
   check: (ctx: CheckContext) => boolean;
 }
 
@@ -100,6 +103,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'First Blood',
     icon: '\uD83C\uDFAF',
     description: 'Win your first frame',
+    category: 'honour',
     check: ({ playerId, allFrames }) =>
       allFrames.some(f => f.winnerId === playerId),
   },
@@ -108,6 +112,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Double Digits',
     icon: '\uD83D\uDD1F',
     description: 'Win 10 frames',
+    category: 'honour',
     check: ({ playerId, allFrames }) =>
       allFrames.filter(f => f.winnerId === playerId).length >= 10,
   },
@@ -116,6 +121,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Half Century',
     icon: '\uD83C\uDFC5',
     description: 'Win 50 frames',
+    category: 'honour',
     check: ({ playerId, allFrames }) =>
       allFrames.filter(f => f.winnerId === playerId).length >= 50,
   },
@@ -124,6 +130,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Century',
     icon: '\uD83D\uDCAF',
     description: 'Win 100 frames',
+    category: 'honour',
     check: ({ playerId, allFrames }) =>
       allFrames.filter(f => f.winnerId === playerId).length >= 100,
   },
@@ -132,6 +139,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Living Legend',
     icon: '\u2B50',
     description: 'Win 250 frames',
+    category: 'honour',
     check: ({ playerId, allFrames }) =>
       allFrames.filter(f => f.winnerId === playerId).length >= 250,
   },
@@ -142,6 +150,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Hat Trick',
     icon: '\uD83C\uDFA9',
     description: '3 wins in a row',
+    category: 'honour',
     check: ({ playerId, sessionFrames }) =>
       sessionFrames ? getMaxStreak(sessionFrames, playerId) >= 3 : false,
   },
@@ -150,6 +159,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'On Fire',
     icon: '\uD83D\uDD25',
     description: '5 wins in a row',
+    category: 'honour',
     check: ({ playerId, sessionFrames }) =>
       sessionFrames ? getMaxStreak(sessionFrames, playerId) >= 5 : false,
   },
@@ -160,6 +170,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Flawless',
     icon: '\uD83D\uDC8E',
     description: 'Win all your frames (3+ wins, 0 losses)',
+    category: 'honour',
     check: ({ playerId, sessionFrames }) => {
       if (!sessionFrames) return false;
       const wins = sessionFrames.filter(f => f.winnerId === playerId).length;
@@ -172,6 +183,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Clean Sweep',
     icon: '\uD83E\uDDF9',
     description: 'Beat every opponent in a session',
+    category: 'honour',
     check: ({ playerId, sessionFrames }) => {
       if (!sessionFrames) return false;
       // Find all opponents in this session
@@ -199,6 +211,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Regular',
     icon: '\uD83D\uDCC5',
     description: 'Play 10 sessions',
+    category: 'honour',
     check: ({ playerId, allSessions }) =>
       allSessions.filter(s => s.playerIds.includes(playerId)).length >= 10,
   },
@@ -207,6 +220,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Veteran',
     icon: '\uD83C\uDF96\uFE0F',
     description: 'Play 50 sessions',
+    category: 'honour',
     check: ({ playerId, allSessions }) =>
       allSessions.filter(s => s.playerIds.includes(playerId)).length >= 50,
   },
@@ -217,6 +231,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Nemesis',
     icon: '\uD83D\uDC4A',
     description: '10 wins against one opponent',
+    category: 'honour',
     check: ({ playerId, allFrames }) => {
       for (const c of winsPerOpponent(playerId, allFrames).values()) {
         if (c >= 10) return true;
@@ -229,6 +244,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Arch Rival',
     icon: '\u2694\uFE0F',
     description: '25 wins against one opponent',
+    category: 'honour',
     check: ({ playerId, allFrames }) => {
       for (const c of winsPerOpponent(playerId, allFrames).values()) {
         if (c >= 25) return true;
@@ -241,6 +257,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: '50 Club',
     icon: '\uD83E\uDD1D',
     description: '50 frames played against one opponent',
+    category: 'honour',
     check: ({ playerId, allFrames }) => {
       for (const c of totalFramesBetween(playerId, allFrames).values()) {
         if (c >= 50) return true;
@@ -255,6 +272,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Comeback King',
     icon: '\uD83D\uDC51',
     description: 'Come back from 3+ down to beat an opponent',
+    category: 'honour',
     check: ({ playerId, sessionFrames }) => {
       if (!sessionFrames) return false;
       const opponents = new Set<number>();
@@ -280,6 +298,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Marathon Man',
     icon: '\uD83C\uDFC3',
     description: 'Play in a 20+ frame session',
+    category: 'honour',
     check: ({ playerId, allFrames, allSessions }) => {
       const grouped = framesBySession(allFrames);
       for (const s of allSessions) {
@@ -295,6 +314,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Opening Break',
     icon: '\uD83C\uDFB1',
     description: 'Win the first frame of 10 sessions',
+    category: 'honour',
     check: ({ playerId, allFrames }) => {
       const grouped = framesBySession(allFrames);
       let count = 0;
@@ -313,6 +333,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Perfect 10',
     icon: '\u26A1',
     description: '10 wins in a row in a session',
+    category: 'honour',
     check: ({ playerId, sessionFrames }) =>
       sessionFrames ? getMaxStreak(sessionFrames, playerId) >= 10 : false,
   },
@@ -321,6 +342,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Dynasty',
     icon: '\uD83C\uDFC6',
     description: '100 wins against one opponent',
+    category: 'honour',
     check: ({ playerId, allFrames }) => {
       for (const c of winsPerOpponent(playerId, allFrames).values()) {
         if (c >= 100) return true;
@@ -333,6 +355,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Iron Man',
     icon: '\uD83D\uDCAA',
     description: 'Play 100 sessions',
+    category: 'honour',
     check: ({ playerId, allSessions }) =>
       allSessions.filter(s => s.playerIds.includes(playerId)).length >= 100,
   },
@@ -343,6 +366,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'First Brush',
     icon: '\uD83E\uDDF9',
     description: 'Brush an opponent for the first time',
+    category: 'honour',
     check: ({ playerId, allFrames }) =>
       allFrames.some(f => f.winnerId === playerId && f.brush),
   },
@@ -351,6 +375,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Brush Off',
     icon: '\uD83D\uDCA8',
     description: 'Brush opponents 5 times',
+    category: 'honour',
     check: ({ playerId, allFrames }) =>
       allFrames.filter(f => f.winnerId === playerId && f.brush).length >= 5,
   },
@@ -359,6 +384,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Brush Master',
     icon: '\uD83E\uDDF9',
     description: 'Brush opponents 10 times',
+    category: 'honour',
     check: ({ playerId, allFrames }) =>
       allFrames.filter(f => f.winnerId === playerId && f.brush).length >= 10,
   },
@@ -367,6 +393,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Street Sweeper',
     icon: '\uD83C\uDF2A\uFE0F',
     description: 'Brush opponents 25 times',
+    category: 'honour',
     check: ({ playerId, allFrames }) =>
       allFrames.filter(f => f.winnerId === playerId && f.brush).length >= 25,
   },
@@ -377,6 +404,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Dust Bunny',
     icon: '\uD83D\uDCA9',
     description: 'Get brushed for the first time',
+    category: 'shame',
     check: ({ playerId, allFrames }) =>
       allFrames.some(f => f.loserId === playerId && f.brush),
   },
@@ -385,6 +413,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Doormat',
     icon: '\uD83E\uDEE3',
     description: 'Get brushed 5 times',
+    category: 'shame',
     check: ({ playerId, allFrames }) =>
       allFrames.filter(f => f.loserId === playerId && f.brush).length >= 5,
   },
@@ -393,6 +422,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Punching Bag',
     icon: '\uD83E\uDD4A',
     description: 'Get brushed 10 times',
+    category: 'shame',
     check: ({ playerId, allFrames }) =>
       allFrames.filter(f => f.loserId === playerId && f.brush).length >= 10,
   },
@@ -401,6 +431,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Human Broom',
     icon: '\uD83E\uDEE0',
     description: 'Get brushed 25 times',
+    category: 'shame',
     check: ({ playerId, allFrames }) =>
       allFrames.filter(f => f.loserId === playerId && f.brush).length >= 25,
   },
@@ -411,6 +442,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     name: 'Giant Killer',
     icon: '\uD83D\uDDE1\uFE0F',
     description: 'Beat the monthly #1',
+    category: 'honour',
     check: ({ playerId, allFrames, monthlyTopId }) =>
       monthlyTopId !== undefined &&
       monthlyTopId !== playerId &&
