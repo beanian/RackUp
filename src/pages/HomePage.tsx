@@ -11,6 +11,7 @@ import {
 import { useHomeData } from '../hooks/useHomeData';
 import { useObsStatus } from '../hooks/useObsStatus';
 import { playWinSound, playStreakSound, playSessionEndFanfare, playVsSplashSound, playLastOrdersSound, isSoundEnabled, setSoundEnabled } from '../utils/sounds';
+import ThemeSwitcher from '../components/ThemeSwitcher';
 import VsSplash from '../components/VsSplash';
 import { getWinStreak, getStreakMessage } from '../utils/streaks';
 import { checkAndUnlock, type Achievement } from '../utils/achievements';
@@ -1508,11 +1509,19 @@ export default function HomePage() {
             onClick={() => !updateRunning && setShowUpdateModal(false)}
           >
             <div
-              className="panel mx-4 w-full max-w-md p-6 xl:p-8 space-y-4"
+              className="panel mx-4 w-full max-w-md p-6 xl:p-8 space-y-4 max-h-[90vh] overflow-y-auto"
               onClick={e => e.stopPropagation()}
             >
-              <h2 className="text-chalk text-xl xl:text-2xl font-display font-bold">System Update</h2>
+              <h2 className="text-chalk text-xl xl:text-2xl font-display font-bold">Settings</h2>
 
+              {/* ── Theme picker ── */}
+              <div>
+                <h3 className="text-chalk-dim text-xs xl:text-sm font-semibold uppercase tracking-wider mb-2">Theme</h3>
+                <ThemeSwitcher />
+              </div>
+
+              {/* ── Update section ── */}
+              <div className="border-t border-chalk-dim/10" />
               <div className="space-y-1 text-sm xl:text-base">
                 <p className="text-chalk-dim">
                   Version: <span className="text-chalk font-mono">{liveVersion}</span>

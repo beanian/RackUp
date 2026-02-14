@@ -31,18 +31,18 @@ export default function AchievementModal({ achievement, players, onClose }: Prop
   unlocked.sort((a, b) => a.unlockedAt - b.unlockedAt);
 
   const solidBorder = achievement.category === 'honour' ? 'border-gold/50' : 'border-loss/50';
-  const chipStyle = achievement.category === 'honour'
-    ? { background: 'rgba(212, 175, 55, 0.2)', border: '1px solid rgba(212, 175, 55, 0.5)' }
-    : { background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.5)' };
+  const chipClass = achievement.category === 'honour'
+    ? 'bg-gold/20 border border-gold/50'
+    : 'bg-loss/20 border border-loss/50';
 
   return (
     <div
-      style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.85)', padding: '16px', paddingBottom: '80px' }}
+      style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.85)', padding: '16px', paddingBottom: '80px' } /* backdrop is always black */}
       onClick={onClose}
     >
       <div
         className={`rounded-xl p-4 xl:p-6 max-w-sm xl:max-w-md w-full max-h-full flex flex-col border-2 ${solidBorder}`}
-        style={{ background: 'rgba(10, 18, 12, 0.98)', boxShadow: '0 0 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(240,236,224,0.08)' }}
+        style={{ background: 'var(--color-modal-bg)', boxShadow: '0 0 40px rgba(0,0,0,0.7), 0 0 0 1px var(--color-modal-ring)' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Achievement header */}
@@ -71,8 +71,7 @@ export default function AchievementModal({ achievement, players, onClose }: Prop
                 {unlocked.map(({ player }) => (
                   <span
                     key={player.id}
-                    className="text-xs font-semibold text-chalk rounded-full px-3 py-1.5"
-                    style={chipStyle}
+                    className={`text-xs font-semibold text-chalk rounded-full px-3 py-1.5 ${chipClass}`}
                   >
                     {player.emoji ? `${player.emoji} ` : ''}{player.name}
                   </span>
@@ -107,7 +106,7 @@ export default function AchievementModal({ achievement, players, onClose }: Prop
         <button
           onClick={onClose}
           className={`btn-press w-full py-3 rounded-lg text-chalk text-base font-bold min-h-[44px] flex-shrink-0 border-2 ${solidBorder}`}
-          style={{ background: 'rgba(20, 32, 24, 0.9)' }}
+          style={{ background: 'var(--color-panel-bg)' }}
         >
           Close
         </button>

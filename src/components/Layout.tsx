@@ -17,7 +17,7 @@ export default function Layout() {
         className="flex flex-col flex-1 overflow-hidden mx-1.5 mt-1.5 xl:mx-3 xl:mt-3 2xl:mx-4 2xl:mt-4 border-[6px] xl:border-[10px] 2xl:border-[14px] border-trim border-b-0 rounded-t-lg xl:rounded-t-xl"
         style={{
           boxShadow:
-            'inset 0 2px 8px rgba(0,0,0,0.5), 0 0 0 1px rgba(107,76,48,0.3)',
+            `inset 0 2px 8px rgba(0,0,0,0.5), 0 0 0 1px var(--color-frame-shadow)`,
         }}
       >
         {/* Main content */}
