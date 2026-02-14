@@ -9,7 +9,6 @@ interface Props {
 }
 
 export default function AchievementModal({ achievement, players, onClose }: Props) {
-  const borderColor = achievement.category === 'honour' ? 'border-gold/40' : 'border-loss/40';
   const accentColor = achievement.category === 'honour' ? 'text-gold' : 'text-loss';
   const bgTint = achievement.category === 'honour' ? 'bg-gold/5' : 'bg-loss/5';
 

@@ -20,13 +20,6 @@ import PlayerName from '../components/PlayerName';
 type View = 'idle' | 'picking' | 'session' | 'summary';
 type MatchStep = 'pickPlayer1' | 'pickPlayer2' | 'gameOn';
 
-const FLAG_CONFIG = {
-  brush:     { label: 'Brush',     bg: 'bg-blue-600',   text: 'text-white' },
-  clearance: { label: 'Clearance', bg: 'bg-green-600',  text: 'text-white' },
-  foul:      { label: 'Foul',      bg: 'bg-red-600',    text: 'text-white' },
-  special:   { label: 'Special',   bg: 'bg-yellow-500', text: 'text-black' },
-} as const;
-
 const MATCH_STATE_KEY = 'rackup-match-state';
 
 interface PersistedMatchState {
