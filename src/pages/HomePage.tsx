@@ -27,9 +27,6 @@ const FLAG_CONFIG = {
   special:   { label: 'Special',   bg: 'bg-yellow-500', text: 'text-black' },
 } as const;
 
-type FlagKey = keyof typeof FLAG_CONFIG;
-const ALL_FLAGS: FlagKey[] = ['brush', 'clearance', 'foul', 'special'];
-
 const MATCH_STATE_KEY = 'rackup-match-state';
 
 interface PersistedMatchState {
@@ -83,9 +80,10 @@ export default function HomePage() {
   const achievementTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [varReviewing, setVarReviewing] = useState(false);
   const [varVideoPath, setVarVideoPath] = useState<string | null>(null);
-  const [currentFrameFlags, setCurrentFrameFlags] = useState<FlagKey[]>([]);
   const [winnerFlash, setWinnerFlash] = useState<number | null>(null);
-  const [flagPopKey, setFlagPopKey] = useState(0);
+  const [pendingWinnerId, setPendingWinnerId] = useState<number | null>(null);
+  const [modalBrush, setModalBrush] = useState(false);
+  const [modalClearance, setModalClearance] = useState(false);
   const frameStartedAt = useRef<Date | null>(null);
 
   // ── Self-update state ──
@@ -460,15 +458,34 @@ export default function HomePage() {
     });
   };
 
-  const handleRecordWinner = async (winnerId: number) => {
+  const handleWinnerTap = (winnerId: number) => {
     if (!activeSession?.id || player1Id === null || player2Id === null || varReviewing) return;
     setWinnerFlash(winnerId);
     setTimeout(() => setWinnerFlash(null), 400);
+    setPendingWinnerId(winnerId);
+    setModalBrush(false);
+    setModalClearance(false);
+  };
+
+  const handleCancelWinner = () => {
+    setPendingWinnerId(null);
+    setModalBrush(false);
+    setModalClearance(false);
+  };
+
+  const handleConfirmWinner = async () => {
+    if (!activeSession?.id || player1Id === null || player2Id === null || pendingWinnerId === null) return;
+    const winnerId = pendingWinnerId;
     const loserId = winnerId === player1Id ? player2Id : player1Id;
+    const isBrush = modalBrush;
+    const isClearance = modalClearance;
+
+    // Close modal
+    setPendingWinnerId(null);
+    setModalBrush(false);
+    setModalClearance(false);
 
     // Compute head-to-head scores optimistically for the NEXT matchup
-    // After recording, winner stays on, loser goes to queue
-    // Figure out who the next opponent will be
     let nextP1Id = winnerId;
     let nextP2Id: number;
     let nextP1Score: number;
@@ -476,53 +493,47 @@ export default function HomePage() {
 
     if (challengerQueue.length > 0) {
       nextP2Id = challengerQueue[0];
-      // H2H between winner and next challenger from sessionFrames
-      // +1 for the frame we're about to record if it affects this h2h
       nextP1Score = sessionFrames.filter(f => f.winnerId === nextP1Id && f.loserId === nextP2Id).length;
       nextP2Score = sessionFrames.filter(f => f.winnerId === nextP2Id && f.loserId === nextP1Id).length;
     } else {
       nextP2Id = loserId;
-      // Same two players continue — update the h2h with the new frame
       nextP1Score = sessionFrames.filter(f => f.winnerId === nextP1Id && f.loserId === nextP2Id).length + (winnerId === nextP1Id && loserId === nextP2Id ? 1 : 0);
       nextP2Score = sessionFrames.filter(f => f.winnerId === nextP2Id && f.loserId === nextP1Id).length + (winnerId === nextP2Id && loserId === nextP1Id ? 1 : 0);
     }
 
-    // Capture brush flag before clearing (used for DB write + achievements)
-    const isBrush = currentFrameFlags.includes('brush');
-
     // Stop current OBS recording — next recording starts when user taps "Ready"
     if (recordingEnabled && obsStatus.connected) {
+      const flags: string[] = [];
+      if (isBrush) flags.push('brush');
+      if (isClearance) flags.push('clearance');
       fetch('/api/obs/stop-recording', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ flags: currentFrameFlags }),
+        body: JSON.stringify({ flags }),
       }).catch(e => console.warn('OBS: Failed to stop recording', e));
     }
-    setCurrentFrameFlags([]);
 
     updateOverlay({
       visible: true,
       playerA: { id: String(nextP1Id), name: playerName(nextP1Id), nickname: playerNickname(nextP1Id), emoji: playerEmoji(nextP1Id), score: nextP1Score },
       playerB: { id: String(nextP2Id), name: playerName(nextP2Id), nickname: playerNickname(nextP2Id), emoji: playerEmoji(nextP2Id), score: nextP2Score },
-      frameNumber: sessionFrames.length + 2, // +1 for current frame, +1 for next
+      frameNumber: sessionFrames.length + 2,
       lastWinnerId: String(winnerId),
     });
 
-    // Optimistic UI update — move players immediately, write to DB in background
-    // Compute streak on optimistic frames
-    const optimisticFrames: Frame[] = [...sessionFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date(), brush: isBrush } as Frame];
+    // Optimistic UI update
+    const optimisticFrames: Frame[] = [...sessionFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date(), brush: isBrush, clearance: isClearance } as Frame];
     const streak = getWinStreak(optimisticFrames, winnerId);
     const streakMsg = getStreakMessage(streak);
 
-    // Queue feedback to show after splash dismisses
     if (streakMsg) {
       pendingFeedback.current = { msg: `${playerName(winnerId)} wins! ${streakMsg}`, type: 'streak', streak };
     } else {
       pendingFeedback.current = { msg: `${playerName(winnerId)} wins!`, type: 'win' };
     }
 
-    // Check session-scoped achievements for winner (and loser for brush achievements)
-    const optimisticAllFrames = [...allFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date(), brush: isBrush } as Frame];
+    // Check achievements for winner and loser
+    const optimisticAllFrames = [...allFrames, { winnerId, loserId, sessionId: activeSession.id, recordedAt: new Date(), brush: isBrush, clearance: isClearance } as Frame];
     const newAchs = checkAndUnlock(winnerId, optimisticAllFrames, [], optimisticFrames, monthlyTopId);
     const loserAchs = checkAndUnlock(loserId, optimisticAllFrames, [], optimisticFrames, monthlyTopId);
     pendingAchievements.current = [
@@ -564,10 +575,10 @@ export default function HomePage() {
       }
     }, 1000);
 
-    // Fire DB write + refresh in background (don't block the UI)
+    // Fire DB write + refresh in background
     const startTime = frameStartedAt.current ?? undefined;
     frameStartedAt.current = null;
-    recordFrame(activeSession.id, winnerId, loserId, startTime, undefined, isBrush)
+    recordFrame(activeSession.id, winnerId, loserId, startTime, undefined, isBrush, isClearance)
       .then(() => refresh())
       .catch(e => console.warn('Failed to record frame:', e));
   };
@@ -579,7 +590,9 @@ export default function HomePage() {
       fetch(endpoint, { method: 'POST' })
         .catch(e => console.warn('OBS: Failed to stop/discard recording', e));
     }
-    setCurrentFrameFlags([]);
+    setPendingWinnerId(null);
+    setModalBrush(false);
+    setModalClearance(false);
     setPlayer1Id(null);
     setPlayer2Id(null);
     setChallengerQueue([]);
@@ -990,7 +1003,7 @@ export default function HomePage() {
                 <div className="w-full flex items-stretch justify-center gap-4 xl:gap-8">
                   {/* Player 1 - tap to win */}
                   <button
-                    onClick={() => handleRecordWinner(player1Id)}
+                    onClick={() => handleWinnerTap(player1Id)}
                     className={`btn-press flex-1 max-w-[45%] py-5 xl:py-10 2xl:py-14 panel !border-2 active:!border-win flex flex-col items-center justify-center ${winnerFlash === player1Id ? 'winner-flash !border-win' : '!border-board-light'}`}
                   >
                     {eitherHasEmoji && (
@@ -1007,7 +1020,7 @@ export default function HomePage() {
 
                   {/* Player 2 - tap to win */}
                   <button
-                    onClick={() => handleRecordWinner(player2Id)}
+                    onClick={() => handleWinnerTap(player2Id)}
                     className={`btn-press flex-1 max-w-[45%] py-5 xl:py-10 2xl:py-14 panel !border-2 active:!border-win flex flex-col items-center justify-center ${winnerFlash === player2Id ? 'winner-flash !border-win' : '!border-board-light'}`}
                   >
                     {eitherHasEmoji && (
@@ -1034,41 +1047,6 @@ export default function HomePage() {
                   <span className="mx-2 xl:mx-4">-</span>
                   <span className="text-chalk font-bold score-num">{p2Wins}</span>
                 </p>
-              );
-            })()}
-
-            {/* Frame flags */}
-            {(() => {
-              const visibleFlags = recordingEnabled && obsStatus.recording
-                ? ALL_FLAGS
-                : ['brush' as FlagKey];
-              return (
-                <div className="flex items-center gap-2 xl:gap-3 mt-2 xl:mt-3">
-                  {visibleFlags.map((flag) => {
-                    const cfg = FLAG_CONFIG[flag];
-                    const active = currentFrameFlags.includes(flag);
-                    return (
-                      <button
-                        key={`${flag}-${flagPopKey}`}
-                        onClick={() => {
-                          setCurrentFrameFlags(prev =>
-                            prev.includes(flag)
-                              ? prev.filter(f => f !== flag)
-                              : [...prev, flag],
-                          );
-                          setFlagPopKey(k => k + 1);
-                        }}
-                        className={`btn-press text-sm xl:text-lg font-semibold px-3 xl:px-5 py-1.5 xl:py-2 rounded-full transition-all min-h-[36px] xl:min-h-[44px] flag-pop ${
-                          active
-                            ? `${cfg.bg} ${cfg.text}`
-                            : 'bg-white/5 text-chalk-dim/40'
-                        }`}
-                      >
-                        {cfg.label}
-                      </button>
-                    );
-                  })}
-                </div>
               );
             })()}
 
@@ -1336,6 +1314,68 @@ export default function HomePage() {
             >
               Resume Recording
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Winner Confirmation Modal */}
+      {pendingWinnerId !== null && player1Id !== null && player2Id !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="panel p-8 xl:p-12 max-w-md xl:max-w-lg w-[90vw] flex flex-col items-center gap-6 xl:gap-8 !border-win/30">
+            <div className="text-center">
+              <span className="text-5xl xl:text-7xl block mb-2">{playerEmoji(pendingWinnerId) || '\uD83C\uDFC6'}</span>
+              <h2 className="font-display text-2xl xl:text-4xl text-gold glow-gold">
+                <PlayerName name={playerName(pendingWinnerId)} nickname={playerNickname(pendingWinnerId)} /> Wins!
+              </h2>
+            </div>
+
+            {/* Brush / Clearance toggles */}
+            <div className="flex gap-4 xl:gap-6 w-full">
+              <button
+                onClick={() => {
+                  setModalBrush(prev => !prev);
+                  setModalClearance(false);
+                }}
+                className={`btn-press flex-1 py-4 xl:py-6 rounded-xl text-lg xl:text-2xl font-bold min-h-[56px] xl:min-h-[80px] border-2 transition-all flex flex-col items-center gap-1 ${
+                  modalBrush
+                    ? 'border-blue-500 bg-blue-600 text-white'
+                    : 'border-board-light/30 bg-white/5 text-chalk-dim'
+                }`}
+              >
+                <span className="text-2xl xl:text-3xl">{'\uD83E\uDDF9'}</span>
+                <span>Brush</span>
+              </button>
+              <button
+                onClick={() => {
+                  setModalClearance(prev => !prev);
+                  setModalBrush(false);
+                }}
+                className={`btn-press flex-1 py-4 xl:py-6 rounded-xl text-lg xl:text-2xl font-bold min-h-[56px] xl:min-h-[80px] border-2 transition-all flex flex-col items-center gap-1 ${
+                  modalClearance
+                    ? 'border-green-500 bg-green-600 text-white'
+                    : 'border-board-light/30 bg-white/5 text-chalk-dim'
+                }`}
+              >
+                <span className="text-2xl xl:text-3xl">{'\u2728'}</span>
+                <span>Clearance</span>
+              </button>
+            </div>
+
+            {/* Cancel / Confirm buttons */}
+            <div className="flex gap-4 xl:gap-6 w-full">
+              <button
+                onClick={handleCancelWinner}
+                className="btn-press flex-1 py-4 xl:py-6 panel text-chalk text-lg xl:text-2xl font-bold min-h-[56px] xl:min-h-[80px]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmWinner}
+                className="btn-press flex-1 py-4 xl:py-6 bg-win text-board-dark text-lg xl:text-2xl font-bold rounded-xl min-h-[56px] xl:min-h-[80px]"
+              >
+                Confirm
+              </button>
+            </div>
           </div>
         </div>
       )}

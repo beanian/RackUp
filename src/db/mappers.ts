@@ -28,6 +28,7 @@ export interface FrameRow {
   recorded_at: string;
   video_file_path: string | null;
   brush: boolean;
+  clearance: boolean;
 }
 
 // Mapper functions: snake_case rows → camelCase interfaces
@@ -63,5 +64,6 @@ export function mapFrame(row: FrameRow): Frame {
     recordedAt: new Date(row.recorded_at),
     videoFilePath: row.video_file_path ?? undefined,
     brush: row.brush,
+    clearance: row.clearance,
   };
 }

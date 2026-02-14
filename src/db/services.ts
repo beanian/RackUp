@@ -168,6 +168,7 @@ export async function recordFrame(
   startedAt?: Date,
   videoFilePath?: string,
   brush?: boolean,
+  clearance?: boolean,
 ): Promise<number> {
   const row: Record<string, unknown> = {
     session_id: sessionId,
@@ -175,6 +176,7 @@ export async function recordFrame(
     loser_id: loserId,
     recorded_at: new Date().toISOString(),
     brush: brush ?? false,
+    clearance: clearance ?? false,
   };
   if (startedAt) {
     row.started_at = startedAt.toISOString();

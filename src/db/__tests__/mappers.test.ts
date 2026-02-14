@@ -117,6 +117,7 @@ describe('mapFrame', () => {
       video_file_path: null,
       started_at: null,
       brush: false,
+      clearance: false,
     };
 
     const frame = mapFrame(row);
@@ -130,6 +131,7 @@ describe('mapFrame', () => {
       videoFilePath: undefined,
       startedAt: undefined,
       brush: false,
+      clearance: false,
     });
   });
 
@@ -143,6 +145,7 @@ describe('mapFrame', () => {
       video_file_path: null,
       started_at: null,
       brush: false,
+      clearance: false,
     };
 
     const frame = mapFrame(row);
@@ -163,6 +166,7 @@ describe('mapFrame', () => {
       video_file_path: null,
       started_at: null,
       brush: false,
+      clearance: false,
     };
 
     const frame = mapFrame(row);

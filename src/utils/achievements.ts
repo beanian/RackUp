@@ -476,6 +476,82 @@ export const ACHIEVEMENTS: Achievement[] = [
       allFrames.filter(f => f.loserId === playerId && f.brush).length >= 25,
   },
 
+  // ── Clearances (potting all balls in one visit) ──
+  {
+    id: 'clearance-1',
+    name: 'First Clear',
+    icon: '\u2728',
+    description: 'Clear the table for the first time',
+    category: 'honour',
+    check: ({ playerId, allFrames }) =>
+      allFrames.some(f => f.winnerId === playerId && f.clearance),
+  },
+  {
+    id: 'clearance-5',
+    name: 'Table Sweep',
+    icon: '\uD83C\uDF1F',
+    description: 'Clear the table 5 times',
+    category: 'honour',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.winnerId === playerId && f.clearance).length >= 5,
+  },
+  {
+    id: 'clearance-10',
+    name: 'Clean Machine',
+    icon: '\uD83E\uDDBE',
+    description: 'Clear the table 10 times',
+    category: 'honour',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.winnerId === playerId && f.clearance).length >= 10,
+  },
+  {
+    id: 'clearance-25',
+    name: 'The Cleaner',
+    icon: '\uD83E\uDE90',
+    description: 'Clear the table 25 times',
+    category: 'honour',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.winnerId === playerId && f.clearance).length >= 25,
+  },
+
+  // ── Cleared (opponent clears the table on you) ──
+  {
+    id: 'cleared-1',
+    name: 'Spectator',
+    icon: '\uD83D\uDC40',
+    description: 'Get cleared for the first time',
+    category: 'shame',
+    check: ({ playerId, allFrames }) =>
+      allFrames.some(f => f.loserId === playerId && f.clearance),
+  },
+  {
+    id: 'cleared-5',
+    name: 'Ball Watcher',
+    icon: '\uD83E\uDDD0',
+    description: 'Get cleared 5 times',
+    category: 'shame',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.loserId === playerId && f.clearance).length >= 5,
+  },
+  {
+    id: 'cleared-10',
+    name: 'Standing Ovation',
+    icon: '\uD83D\uDC4F',
+    description: 'Get cleared 10 times',
+    category: 'shame',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.loserId === playerId && f.clearance).length >= 10,
+  },
+  {
+    id: 'cleared-25',
+    name: 'Human Traffic Cone',
+    icon: '\uD83D\uDEA7',
+    description: 'Get cleared 25 times',
+    category: 'shame',
+    check: ({ playerId, allFrames }) =>
+      allFrames.filter(f => f.loserId === playerId && f.clearance).length >= 25,
+  },
+
   // ── Losing streaks ──
   {
     id: 'lose-streak-5',

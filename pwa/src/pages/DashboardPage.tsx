@@ -41,47 +41,50 @@ export default function DashboardPage() {
   const [latestFrames, setLatestFrames] = useState<Frame[]>([]);
   const [latestSession, setLatestSession] = useState<Session | null>(null);
   const [monthlyLeader, setMonthlyLeader] = useState<LeaderboardEntry | null>(null);
-  const [achReady, setAchReady] = useState(isCacheLoaded());
-
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
+      // Load all data in parallel, including achievements cache
       const [allSessions, allPlayers] = await Promise.all([
         getAllSessions(),
         getAllPlayers(),
+        isCacheLoaded() ? Promise.resolve() : loadAchievementsCache(),
       ]);
 
       if (cancelled) return;
 
       const pMap = new Map(allPlayers.map((p) => [p.id!, p]));
-      setPlayerMap(pMap);
 
       // Latest completed session
       const completed = allSessions.filter((s) => s.endedAt !== null);
+      let latestSess: Session | null = null;
+      let frames: Frame[] = [];
       if (completed.length > 0) {
-        const latest = completed[0]; // already sorted newest-first by getAllSessions
-        setLatestSession(latest);
-        const frames = await getSessionFrames(latest.id!);
-        if (!cancelled) setLatestFrames(frames);
+        latestSess = completed[0]; // already sorted newest-first by getAllSessions
+        frames = await getSessionFrames(latestSess.id!);
       }
+
+      if (cancelled) return;
 
       // Monthly leader (current month)
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
       const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
       const leaderboard = await getLeaderboard(monthStart, monthEnd);
-      if (!cancelled && leaderboard.length > 0) {
+
+      if (cancelled) return;
+
+      // Set all state in one batch so the UI renders with everything ready
+      setPlayerMap(pMap);
+      if (latestSess) {
+        setLatestSession(latestSess);
+        setLatestFrames(frames);
+      }
+      if (leaderboard.length > 0) {
         setMonthlyLeader(leaderboard[0]);
       }
-
-      // Achievements cache
-      if (!isCacheLoaded()) {
-        await loadAchievementsCache();
-        if (!cancelled) setAchReady(true);
-      }
-
-      if (!cancelled) setLoading(false);
+      setLoading(false);
     }
 
     load();
@@ -113,7 +116,7 @@ export default function DashboardPage() {
 
   // Build recent badges (last 10, across all players)
   const recentBadges = useMemo((): RecentBadge[] => {
-    if (!achReady) return [];
+    if (loading || !isCacheLoaded()) return [];
     const achMap = new Map(ACHIEVEMENTS.map((a) => [a.id, a]));
     const badges: RecentBadge[] = [];
 
@@ -137,7 +140,7 @@ export default function DashboardPage() {
 
     badges.sort((a, b) => b.unlockedAt - a.unlockedAt);
     return badges.slice(0, 10);
-  }, [achReady, playerMap]);
+  }, [loading, playerMap]);
 
   if (loading) {
     return <div className="text-center text-chalk-dim py-12">Loading...</div>;

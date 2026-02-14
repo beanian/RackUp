@@ -31,4 +31,5 @@ export interface Frame {
   recordedAt: Date;
   videoFilePath?: string;
   brush: boolean;
+  clearance: boolean;
 }

@@ -34,7 +34,7 @@ import { getPlayerStats, getLeaderboard } from '../services';
 
 // Helper to create test data
 function makeFrame(id: number, sessionId: number, winnerId: number, loserId: number, recordedAt: string): Frame {
-  return { id, sessionId, winnerId, loserId, recordedAt: new Date(recordedAt), brush: false };
+  return { id, sessionId, winnerId, loserId, recordedAt: new Date(recordedAt), brush: false, clearance: false };
 }
 
 function makeSession(id: number, playerIds: number[], startedAt: string, endedAt: string | null = null): Session {
@@ -65,6 +65,7 @@ function frameRows(frames: Frame[]) {
     loser_id: f.loserId,
     recorded_at: f.recordedAt.toISOString(),
     brush: f.brush,
+    clearance: f.clearance,
   }));
 }
 

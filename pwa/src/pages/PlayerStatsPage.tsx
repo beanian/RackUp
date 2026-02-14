@@ -14,6 +14,7 @@ import {
   isCacheLoaded,
 } from '@shared/utils/achievements';
 import PlayerName from '@shared/components/PlayerName';
+import AchievementModal from '@shared/components/AchievementModal';
 
 type SubTab = 'overview' | 'h2h' | 'badges';
 
@@ -25,6 +26,7 @@ export default function PlayerStatsPage() {
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [subTab, setSubTab] = useState<SubTab>('overview');
   const [achCacheReady, setAchCacheReady] = useState(isCacheLoaded());
+  const [selectedAchievement, setSelectedAchievement] = useState<typeof ACHIEVEMENTS[number] | null>(null);
 
   // Load base data
   useEffect(() => {
@@ -255,32 +257,35 @@ export default function PlayerStatsPage() {
                 <h3 className="text-gold text-xs font-semibold mb-2 uppercase tracking-wider">
                   Badges of Honour
                 </h3>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5">
                   {ACHIEVEMENTS.filter(a => a.category === 'honour').map((ach) => {
                     const unlockedAt = unlockedMap.get(ach.id);
                     const unlocked = unlockedAt !== undefined;
                     return (
-                      <div
+                      <button
                         key={ach.id}
-                        className={`flex flex-col items-center text-center p-2.5 rounded-xl border-2 transition-all ${
+                        onClick={() => setSelectedAchievement(ach)}
+                        className={`btn-press flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-all text-left ${
                           unlocked
                             ? 'border-gold/40 bg-gold/10'
                             : 'border-board-light/20 bg-board-dark/30 opacity-40'
                         }`}
                       >
-                        <span className="text-2xl mb-0.5">{ach.icon}</span>
-                        <span className={`text-[10px] font-bold leading-tight ${unlocked ? 'text-gold' : 'text-chalk-dim'}`}>
-                          {ach.name}
-                        </span>
-                        <span className="text-[9px] text-chalk-dim mt-0.5 leading-tight">
-                          {ach.description}
-                        </span>
-                        {unlocked && (
-                          <span className="text-[8px] text-gold/60 mt-0.5 leading-tight">
-                            {new Date(unlockedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                        <span className="text-lg flex-shrink-0">{ach.icon}</span>
+                        <div className="min-w-0">
+                          <span className={`text-[10px] font-bold leading-tight block truncate ${unlocked ? 'text-gold' : 'text-chalk-dim'}`}>
+                            {ach.name}
                           </span>
-                        )}
-                      </div>
+                          <span className="text-[9px] text-chalk-dim leading-tight block truncate">
+                            {ach.description}
+                          </span>
+                          {unlocked && (
+                            <span className="text-[8px] text-gold/60 leading-tight block">
+                              {new Date(unlockedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          )}
+                        </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -291,36 +296,47 @@ export default function PlayerStatsPage() {
                 <h3 className="text-loss text-xs font-semibold mb-2 uppercase tracking-wider">
                   Badges of Shame
                 </h3>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5">
                   {ACHIEVEMENTS.filter(a => a.category === 'shame').map((ach) => {
                     const unlockedAt = unlockedMap.get(ach.id);
                     const unlocked = unlockedAt !== undefined;
                     return (
-                      <div
+                      <button
                         key={ach.id}
-                        className={`flex flex-col items-center text-center p-2.5 rounded-xl border-2 transition-all ${
+                        onClick={() => setSelectedAchievement(ach)}
+                        className={`btn-press flex items-center gap-1.5 px-2 py-1.5 rounded-lg border transition-all text-left ${
                           unlocked
                             ? 'border-loss/40 bg-loss/10'
                             : 'border-board-light/20 bg-board-dark/30 opacity-40'
                         }`}
                       >
-                        <span className="text-2xl mb-0.5">{ach.icon}</span>
-                        <span className={`text-[10px] font-bold leading-tight ${unlocked ? 'text-loss' : 'text-chalk-dim'}`}>
-                          {ach.name}
-                        </span>
-                        <span className="text-[9px] text-chalk-dim mt-0.5 leading-tight">
-                          {ach.description}
-                        </span>
-                        {unlocked && (
-                          <span className="text-[8px] text-loss/60 mt-0.5 leading-tight">
-                            {new Date(unlockedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                        <span className="text-lg flex-shrink-0">{ach.icon}</span>
+                        <div className="min-w-0">
+                          <span className={`text-[10px] font-bold leading-tight block truncate ${unlocked ? 'text-loss' : 'text-chalk-dim'}`}>
+                            {ach.name}
                           </span>
-                        )}
-                      </div>
+                          <span className="text-[9px] text-chalk-dim leading-tight block truncate">
+                            {ach.description}
+                          </span>
+                          {unlocked && (
+                            <span className="text-[8px] text-loss/60 leading-tight block">
+                              {new Date(unlockedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          )}
+                        </div>
+                      </button>
                     );
                   })}
                 </div>
               </div>
+
+              {selectedAchievement && (
+                <AchievementModal
+                  achievement={selectedAchievement}
+                  players={players}
+                  onClose={() => setSelectedAchievement(null)}
+                />
+              )}
             </div>
           )}
         </>
