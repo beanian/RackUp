@@ -34,3 +34,17 @@ export function getMaxStreak(frames: Frame[], playerId: number): number {
   }
   return max;
 }
+
+export function getMaxLoseStreak(frames: Frame[], playerId: number): number {
+  let max = 0;
+  let current = 0;
+  for (const f of frames) {
+    if (f.loserId === playerId) {
+      current++;
+      if (current > max) max = current;
+    } else if (f.winnerId === playerId) {
+      current = 0;
+    }
+  }
+  return max;
+}

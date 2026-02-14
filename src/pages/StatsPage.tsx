@@ -401,35 +401,77 @@ function PlayerStatsView({
 
           {/* Achievements tab */}
           {subTab === 'achievements' && (
-            <div className="panel p-5 xl:p-8">
-              <div className="grid grid-cols-3 gap-3 xl:gap-4">
-                {ACHIEVEMENTS.map((ach) => {
-                  const unlockedAt = unlockedMap.get(ach.id);
-                  const unlocked = unlockedAt !== undefined;
-                  return (
-                    <div
-                      key={ach.id}
-                      className={`flex flex-col items-center text-center p-3 xl:p-4 rounded-xl border-2 transition-all ${
-                        unlocked
-                          ? 'border-gold/40 bg-gold/10'
-                          : 'border-board-light/20 bg-board-dark/30 opacity-40'
-                      }`}
-                    >
-                      <span className="text-2xl xl:text-4xl mb-1">{ach.icon}</span>
-                      <span className={`text-xs xl:text-sm font-bold leading-tight ${unlocked ? 'text-gold' : 'text-chalk-dim'}`}>
-                        {ach.name}
-                      </span>
-                      <span className="text-[10px] xl:text-xs text-chalk-dim mt-0.5 leading-tight">
-                        {ach.description}
-                      </span>
-                      {unlocked && (
-                        <span className="text-[9px] xl:text-[10px] text-gold/60 mt-1 leading-tight">
-                          {new Date(unlockedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+            <div className="flex flex-col gap-4 xl:gap-6">
+              {/* Badges of Honour */}
+              <div className="panel p-5 xl:p-8">
+                <h3 className="text-gold text-base xl:text-xl font-semibold mb-3 xl:mb-5 uppercase tracking-wider">
+                  Badges of Honour
+                </h3>
+                <div className="grid grid-cols-3 gap-3 xl:gap-4">
+                  {ACHIEVEMENTS.filter(a => a.category === 'honour').map((ach) => {
+                    const unlockedAt = unlockedMap.get(ach.id);
+                    const unlocked = unlockedAt !== undefined;
+                    return (
+                      <div
+                        key={ach.id}
+                        className={`flex flex-col items-center text-center p-3 xl:p-4 rounded-xl border-2 transition-all ${
+                          unlocked
+                            ? 'border-gold/40 bg-gold/10'
+                            : 'border-board-light/20 bg-board-dark/30 opacity-40'
+                        }`}
+                      >
+                        <span className="text-2xl xl:text-4xl mb-1">{ach.icon}</span>
+                        <span className={`text-xs xl:text-sm font-bold leading-tight ${unlocked ? 'text-gold' : 'text-chalk-dim'}`}>
+                          {ach.name}
                         </span>
-                      )}
-                    </div>
-                  );
-                })}
+                        <span className="text-[10px] xl:text-xs text-chalk-dim mt-0.5 leading-tight">
+                          {ach.description}
+                        </span>
+                        {unlocked && (
+                          <span className="text-[9px] xl:text-[10px] text-gold/60 mt-1 leading-tight">
+                            {new Date(unlockedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Badges of Shame */}
+              <div className="panel p-5 xl:p-8">
+                <h3 className="text-loss text-base xl:text-xl font-semibold mb-3 xl:mb-5 uppercase tracking-wider">
+                  Badges of Shame
+                </h3>
+                <div className="grid grid-cols-3 gap-3 xl:gap-4">
+                  {ACHIEVEMENTS.filter(a => a.category === 'shame').map((ach) => {
+                    const unlockedAt = unlockedMap.get(ach.id);
+                    const unlocked = unlockedAt !== undefined;
+                    return (
+                      <div
+                        key={ach.id}
+                        className={`flex flex-col items-center text-center p-3 xl:p-4 rounded-xl border-2 transition-all ${
+                          unlocked
+                            ? 'border-loss/40 bg-loss/10'
+                            : 'border-board-light/20 bg-board-dark/30 opacity-40'
+                        }`}
+                      >
+                        <span className="text-2xl xl:text-4xl mb-1">{ach.icon}</span>
+                        <span className={`text-xs xl:text-sm font-bold leading-tight ${unlocked ? 'text-loss' : 'text-chalk-dim'}`}>
+                          {ach.name}
+                        </span>
+                        <span className="text-[10px] xl:text-xs text-chalk-dim mt-0.5 leading-tight">
+                          {ach.description}
+                        </span>
+                        {unlocked && (
+                          <span className="text-[9px] xl:text-[10px] text-loss/60 mt-1 leading-tight">
+                            {new Date(unlockedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
