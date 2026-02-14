@@ -1,6 +1,6 @@
 import type { Frame, Session } from '../db/supabase';
 import { supabase } from '../db/supabase';
-import { getMaxStreak } from './streaks';
+import { getMaxStreak, getMaxLoseStreak } from './streaks';
 
 export type AchievementCategory = 'honour' | 'shame';
 
@@ -94,6 +94,46 @@ function totalFramesBetween(playerId: number, frames: Frame[]): Map<number, numb
     }
   }
   return counts;
+}
+
+// ── Helper: max consecutive sessions finishing last ──
+function maxConsecutiveLast(
+  playerId: number,
+  sessions: Session[],
+  grouped: Map<number, Frame[]>,
+): number {
+  let max = 0;
+  let current = 0;
+  // sessions are newest-first, iterate oldest-first for chronological order
+  for (let i = sessions.length - 1; i >= 0; i--) {
+    const s = sessions[i];
+    if (!s.id || !s.playerIds.includes(playerId)) {
+      // not involved — reset streak
+      current = 0;
+      continue;
+    }
+    const frames = grouped.get(s.id) ?? [];
+    if (frames.length === 0) { current = 0; continue; }
+
+    // Compute wins per player in this session
+    const wins = new Map<number, number>();
+    for (const pid of s.playerIds) wins.set(pid, 0);
+    for (const f of frames) {
+      wins.set(f.winnerId, (wins.get(f.winnerId) ?? 0) + 1);
+    }
+    const playerWins = wins.get(playerId) ?? 0;
+    let isLast = true;
+    for (const [pid, w] of wins) {
+      if (pid !== playerId && w <= playerWins) { isLast = false; break; }
+    }
+    if (isLast) {
+      current++;
+      if (current > max) max = current;
+    } else {
+      current = 0;
+    }
+  }
+  return max;
 }
 
 export const ACHIEVEMENTS: Achievement[] = [
@@ -434,6 +474,139 @@ export const ACHIEVEMENTS: Achievement[] = [
     category: 'shame',
     check: ({ playerId, allFrames }) =>
       allFrames.filter(f => f.loserId === playerId && f.brush).length >= 25,
+  },
+
+  // ── Losing streaks ──
+  {
+    id: 'lose-streak-5',
+    name: 'Cold Streak',
+    icon: '\u2744\uFE0F',
+    description: '5 losses in a row in a session',
+    category: 'shame',
+    check: ({ playerId, sessionFrames }) =>
+      sessionFrames ? getMaxLoseStreak(sessionFrames, playerId) >= 5 : false,
+  },
+  {
+    id: 'lose-streak-10',
+    name: 'Rock Bottom',
+    icon: '\uD83E\uDEA8',
+    description: '10 losses in a row in a session',
+    category: 'shame',
+    check: ({ playerId, sessionFrames }) =>
+      sessionFrames ? getMaxLoseStreak(sessionFrames, playerId) >= 10 : false,
+  },
+
+  // ── Winless session ──
+  {
+    id: 'winless-session',
+    name: 'Whitewash',
+    icon: '\uD83C\uDFF3\uFE0F',
+    description: 'Go a full session without a win (3+ frames)',
+    category: 'shame',
+    check: ({ playerId, allFrames, allSessions }) => {
+      const grouped = framesBySession(allFrames);
+      for (const s of allSessions) {
+        if (!s.id || !s.playerIds.includes(playerId)) continue;
+        const frames = grouped.get(s.id) ?? [];
+        const played = frames.filter(f => f.winnerId === playerId || f.loserId === playerId);
+        if (played.length < 3) continue;
+        const wins = played.filter(f => f.winnerId === playerId).length;
+        if (wins === 0) return true;
+      }
+      return false;
+    },
+  },
+
+  // ── Swept (lose to every opponent) ──
+  {
+    id: 'swept',
+    name: 'Swept Away',
+    icon: '\uD83C\uDF0A',
+    description: 'Lose to every opponent in a session',
+    category: 'shame',
+    check: ({ playerId, sessionFrames }) => {
+      if (!sessionFrames) return false;
+      const opponents = new Set<number>();
+      for (const f of sessionFrames) {
+        if (f.winnerId === playerId) opponents.add(f.loserId);
+        else if (f.loserId === playerId) opponents.add(f.winnerId);
+      }
+      if (opponents.size < 2) return false;
+      const lostTo = new Set<number>();
+      for (const f of sessionFrames) {
+        if (f.loserId === playerId) lostTo.add(f.winnerId);
+      }
+      for (const opp of opponents) {
+        if (!lostTo.has(opp)) return false;
+      }
+      return true;
+    },
+  },
+
+  // ── Bottler (blow a 3+ lead) ──
+  {
+    id: 'bottler',
+    name: 'Bottler',
+    icon: '\uD83C\uDF7E',
+    description: 'Blow a 3+ frame lead against an opponent',
+    category: 'shame',
+    check: ({ playerId, sessionFrames }) => {
+      if (!sessionFrames) return false;
+      const opponents = new Set<number>();
+      for (const f of sessionFrames) {
+        if (f.winnerId === playerId) opponents.add(f.loserId);
+        else if (f.loserId === playerId) opponents.add(f.winnerId);
+      }
+      for (const opp of opponents) {
+        let diff = 0; // positive = player ahead
+        let wasUp3 = false;
+        for (const f of sessionFrames) {
+          if (f.winnerId === playerId && f.loserId === opp) diff++;
+          else if (f.winnerId === opp && f.loserId === playerId) diff--;
+          if (diff >= 3) wasUp3 = true;
+        }
+        if (wasUp3 && diff < 0) return true;
+      }
+      return false;
+    },
+  },
+
+  // ── Slow Starter (lose first frame of 10 sessions) ──
+  {
+    id: 'slow-starter',
+    name: 'Slow Starter',
+    icon: '\uD83D\uDC22',
+    description: 'Lose the first frame of 10 sessions',
+    category: 'shame',
+    check: ({ playerId, allFrames }) => {
+      const grouped = framesBySession(allFrames);
+      let count = 0;
+      for (const frames of grouped.values()) {
+        frames.sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
+        if (frames[0]?.loserId === playerId) count++;
+      }
+      return count >= 10;
+    },
+  },
+
+  // ── Last place finishes ──
+  {
+    id: 'last-3',
+    name: 'Wooden Spoon',
+    icon: '\uD83E\uDD44',
+    description: 'Finish last 3 sessions in a row',
+    category: 'shame',
+    check: ({ playerId, allFrames, allSessions }) =>
+      maxConsecutiveLast(playerId, allSessions, framesBySession(allFrames)) >= 3,
+  },
+  {
+    id: 'last-5',
+    name: 'Cellar Dweller',
+    icon: '\uD83D\uDEBD',
+    description: 'Finish last 5 sessions in a row',
+    category: 'shame',
+    check: ({ playerId, allFrames, allSessions }) =>
+      maxConsecutiveLast(playerId, allSessions, framesBySession(allFrames)) >= 5,
   },
 
   // ── Monthly ──
