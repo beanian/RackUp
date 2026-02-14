@@ -19,7 +19,8 @@ export default function Layout({ children }: { children: ReactNode }) {
       {/* Bottom tab navigation */}
       <nav className="fixed bottom-0 inset-x-0 z-50 panel-wood border-t border-trim-light/30">
         <div className="flex">
-          <TabLink to="/" icon="&#127942;" label="Leaderboard" />
+          <TabLink to="/" icon="&#127968;" label="Dashboard" />
+          <TabLink to="/leaderboard" icon="&#127942;" label="Leaderboard" />
           <TabLink to="/players" icon="&#128100;" label="Players" />
           <TabLink to="/history" icon="&#128197;" label="History" />
         </div>
